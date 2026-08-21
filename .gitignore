@@ -1,0 +1,17 @@
+# Original and generated Android binaries must never be committed.
+*.apk
+*.apks
+*.aab
+*.jks
+*.keystore
+
+/Original APK's/
+/artifacts/
+/build/
+/tools/*.jar
+
+# Local tooling and IDE state.
+/.idea/
+/.vscode/
+*.iml
+*.log
