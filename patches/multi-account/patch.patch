@@ -126,83 +126,6 @@ index 1d4fab4..ded38be 100644
 
      invoke-static {p0, p1}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V
 
-diff --git a/smali_classes6/com/stremio/morphe/AccountSlotReceiver.smali b/smali_classes6/com/stremio/morphe/AccountSlotReceiver.smali
-new file mode 100644
-index 0000000..951952f
---- /dev/null
-+++ b/smali_classes6/com/stremio/morphe/AccountSlotReceiver.smali
-@@ -0,0 +1,71 @@
-+.class public final Lcom/stremio/morphe/AccountSlotReceiver;
-+.super Landroid/content/BroadcastReceiver;
-+.source "AccountSlotReceiver.java"
-+
-+
-+# direct methods
-+.method public constructor <init>()V
-+    .locals 0
-+
-+    invoke-direct {p0}, Landroid/content/BroadcastReceiver;-><init>()V
-+
-+    return-void
-+.end method
-+
-+
-+# virtual methods
-+.method public onReceive(Landroid/content/Context;Landroid/content/Intent;)V
-+    .locals 2
-+
-+    if-eqz p1, :return
-+
-+    if-eqz p2, :return
-+
-+    invoke-virtual {p2}, Landroid/content/Intent;->getAction()Ljava/lang/String;
-+
-+    move-result-object p2
-+
-+    const-string v0, "com.stremio.morphe.GET_ACCOUNT_SLOT"
-+
-+    invoke-virtual {v0, p2}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-+
-+    move-result v0
-+
-+    if-eqz v0, :check_set
-+
-+    const-string v0, "account_a"
-+
-+    invoke-static {p1, v0}, Lcom/stremio/morphe/MorpheIsolation;->activeSlot(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;
-+
-+    move-result-object p1
-+
-+    invoke-virtual {p0, p1}, Landroid/content/BroadcastReceiver;->setResultData(Ljava/lang/String;)V
-+
-+    const-string p2, "MorpheAccounts"
-+
-+    invoke-static {p2, p1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-+
-+    goto :return
-+
-+    :check_set
-+    const-string p1, "com.stremio.morphe.SET_ACCOUNT_SLOT"
-+
-+    invoke-virtual {p1, p2}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-+
-+    move-result p1
-+
-+    if-eqz p1, :return
-+
-+    const-string p1, "use_profile_chooser"
-+
-+    invoke-virtual {p0, p1}, Landroid/content/BroadcastReceiver;->setResultData(Ljava/lang/String;)V
-+
-+    const-string p1, "MorpheAccounts"
-+
-+    const-string p2, "Direct account mutation is disabled; use ProfileChooserActivity"
-+
-+    invoke-static {p1, p2}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
-+
-+    :return
-+    return-void
-+.end method
 diff --git a/smali_classes6/com/stremio/tv/views/menu/NavigationMenuKt.smali b/smali_classes6/com/stremio/tv/views/menu/NavigationMenuKt.smali
 index ecf3956..87b7e3d 100644
 --- a/smali_classes6/com/stremio/tv/views/menu/NavigationMenuKt.smali
@@ -225,7 +148,7 @@ index ecf3956..87b7e3d 100644
      sget-object p0, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
 
      return-object p0
-@@ -6250,6 +6254,26 @@
+@@ -6250,5 +6254,25 @@
 
      move-result-object v0
 
@@ -251,4 +174,3 @@ index ecf3956..87b7e3d 100644
 +
      .line 337
      invoke-static {v0}, Landroidx/compose/foundation/FocusableKt;->focusGroup(Landroidx/compose/ui/Modifier;)Landroidx/compose/ui/Modifier;
-

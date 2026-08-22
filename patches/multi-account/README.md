@@ -86,6 +86,8 @@ See [TEST_RESULTS.md](./TEST_RESULTS.md) for the emulator results.
 
 The root build orchestrator checksum-validates and decodes a supported official APK, discovers all patch modules, and invokes this module's local apply and augmentation hooks. This module owns its compact diff and all Java sources under `src\com\stremio\morphe`.
 
+For Morphe Manager, `morphe/` owns the exact bytecode fingerprints, resource transforms, and extension hooks. The same original Java runtime source is compiled into `extensions/stremio.mpe`, so the Manager and legacy builds do not maintain separate runtime implementations.
+
 ```powershell
 .\scripts\build.ps1 -OriginalApk "C:\path\to\the-supported-stremio.apk"
 ```

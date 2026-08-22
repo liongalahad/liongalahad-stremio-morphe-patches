@@ -30,6 +30,7 @@ Reordering is deliberately limited to lists where every visible descriptor is in
 ## Owned files
 
 - `patch.patch` adds selection, click-suppression, and Back-cancellation hooks to the addon fragment.
+- `morphe/` expresses the same three hooks as exact Morphe bytecode fingerprints for Manager builds.
 - `src/com/stremio/morphe/AddonReorderBridge.java` owns the interaction state, outline drawable, account-safe merge, API request, rollback, and Core refresh.
 - `apply.ps1` compatibility-checks and applies the compact smali diff.
 - `augment.ps1` builds the module as `classes11.dex`; `classes10.dex` remains owned by the multi-account module.

@@ -1,6 +1,6 @@
 # Stremio Morphe Patches
 
-Public Morphe patch source for the official Stremio Android TV application. The three current patches target only `com.stremio.one` `1.10.4`.
+Morphe patch source for the official Stremio Android TV application. The three current patches target only `com.stremio.one` `1.10.4`.
 
 This repository distributes compact patch code and original Morphe source. It never distributes original, decoded, rebuilt, signed, patched, or otherwise modified Stremio APKs.
 
@@ -9,7 +9,25 @@ This repository distributes compact patch code and original Morphe source. It ne
 
 The suite adds a local multi-account chooser, remote-friendly installed-addon reordering, and a side-by-side application identity. Each patch owns its diff, Morphe source, scripts, tools, documentation, and test evidence inside its own directory. Shared root code is limited to generic discovery, composition, rebuild, signing, and verification infrastructure.
 
-## Local workflow
+## Morphe Manager workflow
+
+The repository builds a native Morphe patch bundle (`.mpp`). All three patches are enabled by default and can be imported into Morphe Manager without making this repository public.
+
+Build the bundle locally against checked-out Morphe tooling:
+
+```powershell
+.\scripts\build-morphe.ps1 `
+  -MorpheGradlePluginSource "C:\path\to\morphe-patches-gradle-plugin" `
+  -MorphePatcherSource "C:\path\to\morphe-patcher"
+```
+
+The script prints the generated bundle path and SHA-256. Copy that `.mpp` file to the Android TV device, open Morphe Manager's local patch-bundle import, and select it. Choose the official Stremio Android TV 1.10.4 APK when Manager asks for the source application.
+
+Manager compatibility requires the official Stremio signing certificate, an APK source file, and the ABI-specific 1.10.4 version code registered in `checksums.json`. The legacy PowerShell workflow below additionally performs an exact whole-APK SHA-256 check before decoding.
+
+The two paths can instead be supplied through `MORPHE_GRADLE_PLUGIN_SRC` and `MORPHE_PATCHER_SRC`. To resolve the published dependencies instead, set `MORPHE_PACKAGES_TOKEN` to a GitHub token with `read:packages` scope. The build script also requires the authenticated `liongalahad` GitHub CLI account because the Morphe Gradle tooling configures GitHub Packages during startup.
+
+## Legacy local workflow
 
 ### Requirements
 
@@ -20,7 +38,7 @@ The suite adds a local multi-account chooser, remote-friendly installed-addon re
 - An Android debug keystore at `%USERPROFILE%\.android\debug.keystore`
 - An official Stremio Android TV 1.10.4 APK whose SHA-256 is registered in `checksums.json`
 
-Build all registered patches:
+Build all registered patches directly with Apktool:
 
 ```powershell
 .\scripts\build.ps1 -OriginalApk "C:\path\to\the-supported-stremio.apk"

@@ -230,3 +230,18 @@ two-account Android TV emulator.
 ## Conclusion
 
 One Stremio Android TV installation now retains multiple complete authenticated accounts and provides an on-device lifecycle for selecting, adding, renaming, recoloring, PIN-protecting, and removing them. Core state, Android/default preferences, caches, databases, WorkManager/SDK files and native streaming-server storage are retained separately per account. Switching terminates the outgoing runtime, transactionally rotates the destination container into place, then launches the destination. Removing either an inactive or active account deletes all of its logical app-private stores, while selecting the already-active account still returns immediately without a process restart.
+
+## Morphe Manager bundle regression
+
+Retested on 2026-08-22 with the native `.mpp` bundle applied by Morphe Desktop 1.12.0 to the registered Stremio 1.10.4 x86_64 APK, then installed over the existing API 36 4K TV-emulator build.
+
+| Check | Result |
+| --- | --- |
+| Manager lists Multi-account as compatible with the official package, certificate, version, and x86_64 version code | Pass |
+| Exact bytecode fingerprints and both resource transforms apply once | Pass |
+| Shared `extensions/stremio.mpe` runtime compiles and is injected | Pass |
+| Existing Account A/B metadata survives the in-place update | Pass |
+| Chooser launches and retains active-account color, name, and status | Pass |
+| Selecting the active account launches MainActivity and Home | Pass |
+| Patched account control renders in the Stremio side menu | Pass |
+| Fatal Android runtime exceptions after chooser and Home launch | 0 |

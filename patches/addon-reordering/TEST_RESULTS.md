@@ -41,3 +41,21 @@ Environment: Android API 36, x86_64 Android TV emulator, 3840 x 2160 display, ex
 The moved item was cancelled with Back. OK-after-move was not exercised because it would mutate the authenticated account's server-side addon collection. Persistence has build/static coverage for current-collection fetch, unique URL matching, position-preserving merge, full collection submit, error rollback, and Stremio Core refresh, but still requires an explicitly authorized account-write test before it can be marked device-accepted.
 
 No APK contents, authentication values, screenshots, or device captures are retained in this module.
+
+## Morphe Manager bundle regression
+
+Retested on 2026-08-22 with the native `.mpp` bundle and the supported x86_64 Stremio 1.10.4 APK.
+
+| Check | Result |
+| --- | --- |
+| Manager lists Addon reordering with the gated Stremio target | Pass |
+| Selection, click-suppression, and Back fingerprints each match exactly once | Pass |
+| All three bytecode hooks apply | Pass |
+| Shared `AddonReorderBridge` Java source compiles into `extensions/stremio.mpe` | Pass |
+| Composed APK rebuilds, signs, installs, and reaches authenticated Home | Pass |
+| Installed-addon deep link opens the authenticated Installed list | Pass |
+| Hold OK enters reorder mode with the boundary outline and lower chevron | Pass |
+| Back cancels reorder mode without a server write | Pass |
+| Fatal Android runtime exceptions after installation and launch | 0 |
+
+The authenticated server-write boundary remains unchanged from the device verification above.

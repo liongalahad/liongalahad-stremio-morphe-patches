@@ -64,6 +64,7 @@ foreach ($requiredPath in @($java, $apktool, $buildTools, $keystore, $patchRoot)
 
 $modules = @(
     Get-ChildItem -LiteralPath $patchRoot -Directory |
+        Where-Object { $_.Name -notin @('build', 'src') } |
         ForEach-Object {
             $manifestPath = Join-Path $_.FullName 'patch.json'
             if (-not (Test-Path -LiteralPath $manifestPath)) {
