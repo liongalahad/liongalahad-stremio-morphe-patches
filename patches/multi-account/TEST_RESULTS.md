@@ -243,8 +243,15 @@ Retested on 2026-08-22 with the Morphe-native x86_64 build on the existing two-a
 | Italian PIN prompt renders localized title/instructions and retains the buttonless four-digit flow | Pass |
 | Switching from Account A to Account B changes the next chooser opening from Italian to English | Pass |
 | Switching from Account B back to Account A restores Italian on the next chooser opening | Pass |
-| Stremio translation catalogue contains every declared selectable locale | Pass (51 of 51) |
-| Required chooser/profile/PIN translation getters return non-empty text for every selectable locale | Pass (runtime catalogue validation) |
+| Bundled picker-copy table contains every declared selectable locale and all seven visible picker fields | Pass (51 of 51, runtime validation) |
+| Bundled action table contains Rename, Change color, Add/Remove PIN, Remove account, and Enter PIN for every selectable locale | Pass (51 of 51, runtime validation) |
+| German renders localized title, privacy copy, Add account, Active, picker hint, and exit action | Pass |
+| French renders localized title, privacy copy, Add account, Active, picker hint, and exit action | Pass |
+| Indonesian renders localized title, privacy copy, Add account, Active, picker hint, and exit action | Pass |
+| Japanese renders localized title, privacy copy, Add account, Active, picker hint, and exit action | Pass |
+| Arabic renders connected RTL script without clipping and localizes all seven visible picker fields | Pass |
+| Arabic long-press menu renders all account actions in Arabic with no English fallback | Pass |
+| Stremio's general translation catalogue and required dialog getters remain available for every selectable locale | Pass (runtime catalogue validation) |
 | Existing Account A/B account state survives the in-place update and two language-boundary switches | Pass |
 | Fatal Android runtime exceptions during localization checks | 0 |
 

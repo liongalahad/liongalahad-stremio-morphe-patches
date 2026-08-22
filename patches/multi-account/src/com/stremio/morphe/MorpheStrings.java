@@ -8,7 +8,7 @@ import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
 
-/** Localized account-picker copy backed by Stremio's own translation catalogue. */
+/** Localized account-picker copy using bundled picker text plus Stremio's general catalogue. */
 final class MorpheStrings {
     private static final String TAG = "MorpheAccounts";
     private static final String[] SUPPORTED_LOCALES = new String[]{
@@ -85,6 +85,8 @@ final class MorpheStrings {
                 "getLabel_button_continue"
         };
         for (String locale : SUPPORTED_LOCALES) {
+            if (!MorphePickerCopy.hasCompleteLocale(locale)) return false;
+            if (!MorphePickerActions.hasCompleteLocale(locale)) return false;
             Object value = catalogue.get(locale);
             if (value == null) return false;
             for (String getter : criticalGetters) {
@@ -95,44 +97,29 @@ final class MorpheStrings {
     }
 
     String chooseAccount() {
-        if (isEnglish()) return "Choose an account";
-        if (isItalian()) return "Scegli un account";
-        return value("getLabel_user_profiles_switch_profile_title", "Choose an account");
+        return picker(MorphePickerCopy.CHOOSE_ACCOUNT, "Choose an account");
     }
 
     String accountPrivacy() {
-        if (isEnglish()) return "Each account keeps its own login, library, addons and watch state.";
-        if (isItalian()) return "Ogni account mantiene separati accesso, libreria, addon e stato di visione.";
-        return value("getLabel_welcome_profiles_body",
+        return picker(MorphePickerCopy.PRIVACY,
                 "Each account keeps its own login, library, addons and watch state.");
     }
 
     String addAccount() {
-        if (isEnglish()) return "Add account";
-        if (isItalian()) return "Aggiungi account";
-        return value("getLabel_user_profiles_add_profile", "Add account");
+        return picker(MorphePickerCopy.ADD_ACCOUNT, "Add account");
     }
 
     String pickerHint(boolean empty) {
-        if (isEnglish()) return empty ? "Select Add account to sign in with a QR code"
-                : "Hold OK on an account for options";
-        if (isItalian()) return empty ? "Seleziona Aggiungi account per accedere con un codice QR"
-                : "Tieni premuto OK su un account per le opzioni";
-        return value(empty ? "getLabel_mobile_link_account" : "getLabel_user_profiles_manage_profiles",
+        return picker(empty ? MorphePickerCopy.EMPTY_HINT : MorphePickerCopy.OPTIONS_HINT,
                 empty ? "Select Add account to sign in with a QR code"
                         : "Hold OK on an account for options");
     }
 
     String quit() {
-        if (isEnglish()) return "Exit Stremio";
-        if (isItalian()) return "Esci da Stremio";
-        return value("getLabel_quit", "Exit Stremio");
+        return picker(MorphePickerCopy.EXIT_STREMIO, "Exit Stremio");
     }
     String active() {
-        if (isItalian()) return "Attivo";
-        if (isEnglish()) return "Active";
-        return value("getLabel_peers_active", "Active")
-                .replaceAll("(?i)\\s*peers?\\s*", "").replaceAll("[:：]$", "").trim();
+        return picker(MorphePickerCopy.ACTIVE, "Active");
     }
     String pinProtected() {
         if (isItalian()) return "Protetto da PIN";
@@ -140,28 +127,22 @@ final class MorpheStrings {
         return value("getLabel_user_profiles_enter_pin", "PIN protected");
     }
     String rename() {
-        if (isItalian()) return "Rinomina";
-        return value("getLabel_library_folder_rename", "Rename");
+        return action(MorphePickerActions.RENAME, "Rename");
     }
     String changeColor() {
-        if (isItalian()) return "Cambia colore";
-        return value("getLabel_choose_color", "Change color").replaceAll("[:：]$", "");
+        return action(MorphePickerActions.CHANGE_COLOR, "Change color");
     }
     String addPin() {
-        if (isItalian()) return "Aggiungi PIN";
-        return value("getLabel_user_profiles_set_pin", "Add PIN");
+        return action(MorphePickerActions.ADD_PIN, "Add PIN");
     }
     String removePin() {
-        if (isItalian()) return "Rimuovi PIN";
-        return value("getLabel_user_profiles_remove_pin", "Remove PIN");
+        return action(MorphePickerActions.REMOVE_PIN, "Remove PIN");
     }
     String removeAccount() {
-        if (isItalian()) return "Rimuovi account";
-        return value("getLabel_user_profiles_delete_profile_button", "Remove Account");
+        return action(MorphePickerActions.REMOVE_ACCOUNT, "Remove account");
     }
     String enterPin() {
-        if (isItalian()) return "Inserisci PIN";
-        return value("getLabel_user_profiles_enter_pin", "Enter PIN");
+        return action(MorphePickerActions.ENTER_PIN, "Enter PIN");
     }
     String manageAccount(String name) {
         if (isItalian()) return "Inserisci il PIN per gestire " + name;
@@ -254,6 +235,14 @@ final class MorpheStrings {
     private String value(String getter, String fallback) {
         String translated = invoke(strings, getter);
         return translated == null ? fallback : translated;
+    }
+
+    private String picker(int field, String fallback) {
+        return MorphePickerCopy.get(localeTag, field, fallback);
+    }
+
+    private String action(int field, String fallback) {
+        return MorphePickerActions.get(localeTag, field, fallback);
     }
 
     private boolean isEnglish() { return "en-US".equals(localeTag); }

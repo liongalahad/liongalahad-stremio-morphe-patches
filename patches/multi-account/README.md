@@ -19,7 +19,7 @@ Launching Stremio from Android TV Home opens a D-pad-friendly account chooser.
 - Hold OK on a round account avatar to open **Rename**, **Change color**, **Add/Remove PIN**, and **Remove Account**.
 - Avatar outlines become thick only while focused; active-account status is shown by the **Active** badge rather than a persistent thick outline.
 - The chooser and avatar initials use Stremio's bundled Plus Jakarta Sans font family.
-- The chooser follows the active account's Stremio interface language. It resolves the locale from that account's isolated profile and reuses Stremio's bundled catalogue for all 51 interface locales; invalid or unavailable values fall back to English.
+- The chooser follows the active account's Stremio interface language. It resolves the locale from that account's isolated profile and includes complete primary-page and account-action copy for all 51 selectable interface locales. General dialog text still reuses Stremio's catalogue; invalid or unavailable locale values fall back to English.
 - Account names are limited to 12 characters. Picker labels shrink from 17sp and side-menu labels from 13sp, both to a 10sp minimum; a name that is still wider than its assigned label area is end-ellipsized for display without altering the stored name.
 - **Change color** presents colored preview swatches; the avatar outline is derived from a lighter shade of the selected color.
 - Access PINs contain exactly four digits and submit automatically as soon as the fourth digit is entered. A protected account requests its PIN before opening; removing its PIN also requires the current PIN.
@@ -52,7 +52,7 @@ Direct ADB slot mutation is deliberately disabled because it bypasses the proces
 ## Validated behaviour
 
 - The signed APK installs and runs on the 4K API 36 x86_64 TV emulator.
-- An Italian active account renders the chooser in Italian; switching to the English account makes the next chooser opening English, and switching back restores Italian.
+- The picker-copy table is complete for all 51 selectable Stremio locales. German, French, Indonesian, Japanese, Arabic, Italian, and English were rendered on the TV emulator; switching accounts makes the next chooser opening follow the destination account's language.
 - Two authenticated Stremio accounts survive an in-place update.
 - Dynamic Add, Rename, avatar color, PIN protection, Remove, five-profile capacity, active marker, and Exit work with TV controls.
 - Rename and PIN prompts have no redundant action buttons: Rename submits with Enter/Done, PIN prompts submit on digit four, one Back press dismisses, and the TV keyboard closes in both cases.
