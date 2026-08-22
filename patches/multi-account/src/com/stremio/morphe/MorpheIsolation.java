@@ -26,6 +26,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,15 +35,23 @@ import java.util.Set;
 /**
  * Account-boundary storage and process handling for the Morphe multi-account patch.
  *
- * Stremio's Rust/core state is namespaced in the core preference file. This class
- * handles Android-side state that otherwise lives outside that namespace.
+ * Stremio's Rust/core state and Android preferences use separate files per account.
+ * This class handles the remaining Android-side state outside those files.
  */
 public final class MorpheIsolation {
     private static final String TAG = "MorpheIsolation";
     private static final String CORE = "core";
     private static final String META = "morphe_profiles";
     private static final String ACTIVE = "morphe.active_slot";
+    private static final String PROFILE_NAME = "name.";
+    private static final String MANUAL_PROFILE_NAME = "manual_name.";
+    private static final String PROFILE_IDS = "profile_ids";
+    private static final String PENDING_SLOT = "pending.slot";
+    private static final String PENDING_PREVIOUS_SLOT = "pending.previous_slot";
+    private static final String PENDING_NEXT_BEFORE = "pending.next_before";
     private static final String DEFAULT_SLOT = "account_a";
+    private static final String CORE_PREFS_PREFIX = "morphe_core_";
+    private static final String CORE_MIGRATED = "core_file_migrated.";
     private static final String PROFILE_PREFS_PREFIX = "morphe_account_prefs_";
     private static final String SERVER_SETTINGS_DIRECTORY = "morphe_server_settings";
     private static final String SERVER_SETTINGS_FILE = "server-settings.json";
@@ -55,11 +64,371 @@ public final class MorpheIsolation {
 
     private MorpheIsolation() {}
 
+    /**
+     * Reloads the core preference file when another app process may have changed it.
+     * The chooser runs in :profile_chooser while Stremio writes login state in the
+     * main process, so a normal cached SharedPreferences instance is unsafe here.
+     */
+    @SuppressWarnings("deprecation")
+    private static SharedPreferences freshLegacyCorePreferences(Context context) {
+        Context app = context.getApplicationContext();
+        SharedPreferences preferences = app.getSharedPreferences(CORE, Context.MODE_MULTI_PROCESS);
+        preferences.getAll(); // Wait for a reload requested by MODE_MULTI_PROCESS.
+        return preferences;
+    }
+
+    @SuppressWarnings("deprecation")
+    public static SharedPreferences freshProfileMetadata(Context context) {
+        SharedPreferences preferences = context.getApplicationContext()
+                .getSharedPreferences(META, Context.MODE_MULTI_PROCESS);
+        preferences.getAll();
+        return preferences;
+    }
+
+    /** Returns the active account's core file, preserving Stremio's original key path. */
+    public static SharedPreferences corePreferences(Context context) {
+        Context app = context.getApplicationContext();
+        String slot = activeSlot(app, DEFAULT_SLOT);
+        SharedPreferences target = app.getSharedPreferences(corePreferencesName(slot), Context.MODE_PRIVATE);
+        if (!migrateLegacyCoreNamespace(app, slot, target)) {
+            throw new IllegalStateException("Could not migrate Morphe core data for " + slot);
+        }
+        return target;
+    }
+
+    /** Reloads one account's core file after the main process may have changed it. */
+    @SuppressWarnings("deprecation")
+    public static SharedPreferences freshAccountCorePreferences(Context context, String slot) {
+        Context app = context.getApplicationContext();
+        String safeSlot = validSlot(slot);
+        SharedPreferences target = app.getSharedPreferences(
+                corePreferencesName(safeSlot), Context.MODE_MULTI_PROCESS);
+        target.getAll();
+        if (!migrateLegacyCoreNamespace(app, safeSlot, target)) {
+            throw new IllegalStateException("Could not migrate Morphe core data for " + safeSlot);
+        }
+        target.getAll();
+        return target;
+    }
+
+    public static String corePreferencesName(String slot) {
+        return CORE_PREFS_PREFIX + validSlot(slot);
+    }
+
+    public static String activeSlot(Context context, String fallback) {
+        Context app = context.getApplicationContext();
+        String safeFallback = validSlot(fallback);
+        SharedPreferences control = app.getSharedPreferences(META, Context.MODE_PRIVATE);
+        String stored = control.getString(ACTIVE, null);
+        if (isValidSlot(stored)) return stored;
+
+        // One-time migration from builds that kept this control marker in core.xml.
+        SharedPreferences core = freshLegacyCorePreferences(app);
+        String legacy = validSlot(core.getString(ACTIVE, safeFallback));
+        if (!control.edit().putString(ACTIVE, legacy).commit()) {
+            Log.e(TAG, "Could not migrate active account marker to chooser control storage");
+        }
+        return legacy;
+    }
+
+    /** Establishes the first account without inventing a provisional account. */
+    public static boolean initializeActiveSlot(Context context, String destinationSlot) {
+        String destination = validSlot(destinationSlot);
+        SharedPreferences control = context.getApplicationContext()
+                .getSharedPreferences(META, Context.MODE_PRIVATE);
+        if (!control.edit().putString(ACTIVE, destination).commit()) {
+            lastError = "initial active account marker";
+            return false;
+        }
+        lastError = "";
+        return true;
+    }
+
+    /** Marks a newly-created local account as provisional until Stremio authenticates it. */
+    public static boolean beginPendingAccount(Context context, String slot, String previousSlot,
+                                              int nextBefore) {
+        SharedPreferences.Editor editor = context.getApplicationContext()
+                .getSharedPreferences(META, Context.MODE_PRIVATE).edit()
+                .putString(PENDING_SLOT, validSlot(slot))
+                .putInt(PENDING_NEXT_BEFORE, Math.max(1, nextBefore));
+        if (isValidSlot(previousSlot)) editor.putString(PENDING_PREVIOUS_SLOT, previousSlot);
+        else editor.remove(PENDING_PREVIOUS_SLOT);
+        if (!editor.commit()) {
+            lastError = "provisional account marker";
+            return false;
+        }
+        lastError = "";
+        return true;
+    }
+
+    public static boolean hasPendingAccount(Context context) {
+        return isValidSlot(freshProfileMetadata(context).getString(PENDING_SLOT, null));
+    }
+
+    /** A login is complete only when Stremio has stored an authenticated user object. */
+    public static boolean isAuthenticatedAccount(Context context, String slot) {
+        if (!isValidSlot(slot)) return false;
+        String profileJson = freshAccountCorePreferences(context, slot).getString("profile", null);
+        if (profileJson == null || profileJson.trim().isEmpty()) return false;
+        try {
+            JSONObject auth = new JSONObject(profileJson).optJSONObject("auth");
+            return auth != null && auth.optJSONObject("user") != null;
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    /** Promotes the provisional account after the authenticated destination is reached. */
+    public static boolean commitPendingAccountIfAuthenticated(Context context) {
+        SharedPreferences metadata = freshProfileMetadata(context);
+        String pending = metadata.getString(PENDING_SLOT, null);
+        if (!isValidSlot(pending) || !isAuthenticatedAccount(context, pending)) return false;
+        if (!metadata.edit().remove(PENDING_SLOT).remove(PENDING_PREVIOUS_SLOT)
+                .remove(PENDING_NEXT_BEFORE).commit()) {
+            lastError = "provisional account commit";
+            return false;
+        }
+        lastError = "";
+        return true;
+    }
+
+    /**
+     * Resolves a provisional account whenever the chooser opens. Authenticated accounts are
+     * committed; abandoned accounts are removed and the previously active storage is restored.
+     */
+    public static boolean reconcilePendingAccount(Context context, boolean cancelRequested) {
+        SharedPreferences metadata = freshProfileMetadata(context);
+        String pending = metadata.getString(PENDING_SLOT, null);
+        if (!isValidSlot(pending)) return true;
+        if (!cancelRequested && isAuthenticatedAccount(context, pending)) {
+            return commitPendingAccountIfAuthenticated(context);
+        }
+
+        String previous = metadata.getString(PENDING_PREVIOUS_SLOT, null);
+        if (!isValidSlot(previous) || pending.equals(previous)) previous = null;
+        String current = activeSlot(context, pending);
+
+        if (previous != null) {
+            if (pending.equals(current)) {
+                if (!switchAccountRuntime(context, pending, previous)) return false;
+                if (!commitActiveSlot(context, pending, previous)) {
+                    rollbackAccountSwitch(context, pending, previous);
+                    return false;
+                }
+            } else if (!previous.equals(current)) {
+                lastError = "provisional account active marker";
+                return false;
+            }
+        } else {
+            if (!closeCurrentRuntime(context)) return false;
+            if (!metadata.edit().remove(ACTIVE).commit()) {
+                lastError = "provisional active account marker";
+                return false;
+            }
+        }
+
+        if (!deleteProfilePreferences(context, pending)) {
+            lastError = "provisional Android preferences";
+            return false;
+        }
+        if (!deleteCoreProfile(context, pending, null)) {
+            lastError = "provisional core data";
+            return false;
+        }
+
+        String ids = metadata.getString(PROFILE_IDS, "");
+        StringBuilder remaining = new StringBuilder();
+        if (ids != null && !ids.isEmpty()) {
+            for (String id : ids.split("\\|")) {
+                if (!isValidSlot(id) || pending.equals(id)) continue;
+                if (remaining.length() > 0) remaining.append('|');
+                remaining.append(id);
+            }
+        }
+        SharedPreferences.Editor cleanup = metadata.edit().putString(PROFILE_IDS, remaining.toString())
+                .putInt("next_profile", Math.max(1, metadata.getInt(PENDING_NEXT_BEFORE, 1)))
+                .remove(PENDING_SLOT).remove(PENDING_PREVIOUS_SLOT).remove(PENDING_NEXT_BEFORE);
+        for (String key : metadata.getAll().keySet()) {
+            if (key.endsWith("." + pending)) cleanup.remove(key);
+        }
+        if (!cleanup.commit()) {
+            lastError = "provisional account-list cleanup";
+            return false;
+        }
+        lastError = "";
+        return true;
+    }
+
+    /** Commits the chooser-owned active marker without writing Stremio's core.xml. */
+    public static boolean commitActiveSlot(Context context, String expectedSlot, String destinationSlot) {
+        String expected = validSlot(expectedSlot);
+        String destination = validSlot(destinationSlot);
+        SharedPreferences control = context.getApplicationContext()
+                .getSharedPreferences(META, Context.MODE_PRIVATE);
+        String current = validSlot(control.getString(ACTIVE, expected));
+        if (!expected.equals(current)) {
+            lastError = "active account changed while chooser was open";
+            Log.e(TAG, lastError);
+            return false;
+        }
+
+        if (!control.edit().putString(ACTIVE, destination).commit()) {
+            lastError = "active account marker";
+            return false;
+        }
+        if (!destination.equals(control.getString(ACTIVE, null))) {
+            lastError = "active account marker verification";
+            Log.e(TAG, lastError);
+            return false;
+        }
+        lastError = "";
+        return true;
+    }
+
+    /**
+     * Returns a manual name immediately, an authenticated Stremio identity when
+     * available, or null while a new account is still waiting for login data.
+     */
+    @SuppressWarnings("deprecation")
+    public static String synchronizedProfileName(Context context, String slot) {
+        Context app = context.getApplicationContext();
+        String safeSlot = validSlot(slot);
+        SharedPreferences metadata = app.getSharedPreferences(META, Context.MODE_MULTI_PROCESS);
+        metadata.getAll();
+        String stored = metadata.getString(PROFILE_NAME + safeSlot, null);
+        if (metadata.getBoolean(MANUAL_PROFILE_NAME + safeSlot, false)) {
+            return normalizedStoredName(stored);
+        }
+
+        String profileJson = freshAccountCorePreferences(app, safeSlot)
+                .getString("profile", null);
+        String authenticatedName = accountNameFromProfile(profileJson);
+        if (authenticatedName == null) return null;
+        if (!authenticatedName.equals(normalizedStoredName(stored))
+                && !metadata.edit().putString(PROFILE_NAME + safeSlot, authenticatedName).commit()) {
+            Log.e(TAG, "Could not synchronize Stremio account name");
+        }
+        return authenticatedName;
+    }
+
+    private static String accountNameFromProfile(String profileJson) {
+        if (profileJson == null || profileJson.trim().isEmpty()) return null;
+        try {
+            JSONObject auth = new JSONObject(profileJson).optJSONObject("auth");
+            JSONObject user = auth == null ? null : auth.optJSONObject("user");
+            if (user == null) return null;
+
+            String[] nameFields = new String[]{"displayName", "display_name", "name", "username",
+                    "fullName", "fullname"};
+            for (String field : nameFields) {
+                String value = normalizedAccountName(user.optString(field, ""), false);
+                if (value != null) return value;
+            }
+            return normalizedAccountName(user.optString("email", ""), true);
+        } catch (Exception error) {
+            Log.w(TAG, "Could not read account name from Stremio profile metadata");
+            return null;
+        }
+    }
+
+    private static String normalizedAccountName(String value, boolean emailFallback) {
+        if (value == null) return null;
+        String normalized = value.trim();
+        if (normalized.isEmpty()) return null;
+        if (emailFallback) {
+            int at = normalized.indexOf('@');
+            if (at > 0) normalized = normalized.substring(0, at);
+            int separator = firstSeparator(normalized);
+            if (separator > 1) normalized = normalized.substring(0, separator);
+            normalized = normalized.replace('_', ' ').replace('-', ' ').replace('.', ' ').trim();
+            if (!normalized.isEmpty()) {
+                normalized = normalized.substring(0, 1).toUpperCase() + normalized.substring(1);
+            }
+        }
+        normalized = normalized.replaceAll("\\s+", " ").trim();
+        if (normalized.isEmpty()) return null;
+        return normalized.substring(0, Math.min(12, normalized.length()));
+    }
+
+    private static String normalizedStoredName(String value) {
+        if (value == null) return null;
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private static int firstSeparator(String value) {
+        int result = -1;
+        for (char separator : new char[]{'.', '_', '-'}) {
+            int index = value.indexOf(separator);
+            if (index >= 0 && (result < 0 || index < result)) result = index;
+        }
+        return result;
+    }
+
+    /** Removes one account's dedicated core file and its retained rollback namespace. */
+    public static boolean deleteCoreProfile(Context context, String slot, String replacementActiveSlot) {
+        String safeSlot = validSlot(slot);
+        SharedPreferences core = freshAccountCorePreferences(context, safeSlot);
+        SharedPreferences legacy = freshLegacyCorePreferences(context);
+        SharedPreferences metadata = freshProfileMetadata(context);
+        Map<String, ?> coreBefore = new HashMap<String, Object>(core.getAll());
+        Map<String, ?> legacyBefore = new HashMap<String, Object>(legacy.getAll());
+        boolean migrationBefore = metadata.getBoolean(CORE_MIGRATED + safeSlot, false);
+        if (!core.edit().clear().commit()) {
+            lastError = "account core file";
+            return false;
+        }
+
+        SharedPreferences.Editor editor = legacy.edit();
+        String prefix = "morphe." + safeSlot + ".";
+        for (String key : legacyBefore.keySet()) {
+            if (key.startsWith(prefix)) editor.remove(key);
+        }
+        if (!editor.commit()) {
+            replacePreferences(core, coreBefore);
+            lastError = "legacy account core namespace";
+            return false;
+        }
+        SharedPreferences verifiedLegacy = freshLegacyCorePreferences(context);
+        for (String key : verifiedLegacy.getAll().keySet()) {
+            if (key.startsWith(prefix)) {
+                replacePreferences(core, coreBefore);
+                replacePreferences(verifiedLegacy, legacyBefore);
+                lastError = "legacy account core namespace verification";
+                return false;
+            }
+        }
+        if (!metadata.edit().remove(CORE_MIGRATED + safeSlot).commit()) {
+            replacePreferences(core, coreBefore);
+            replacePreferences(verifiedLegacy, legacyBefore);
+            lastError = "account core migration marker";
+            return false;
+        }
+
+        String replacement = replacementActiveSlot == null ? null : validSlot(replacementActiveSlot);
+        if (replacement != null && !commitActiveSlot(context, safeSlot, replacement)) {
+            replacePreferences(core, coreBefore);
+            replacePreferences(verifiedLegacy, legacyBefore);
+            SharedPreferences.Editor restore = metadata.edit();
+            if (migrationBefore) restore.putBoolean(CORE_MIGRATED + safeSlot, true);
+            else restore.remove(CORE_MIGRATED + safeSlot);
+            restore.commit();
+            return false;
+        }
+        lastError = "";
+        return true;
+    }
+
+    public static boolean hasProfiles(Context context) {
+        String ids = context.getApplicationContext().getSharedPreferences(META, Context.MODE_PRIVATE)
+                .getString(PROFILE_IDS, "");
+        return ids != null && !ids.trim().isEmpty();
+    }
+
     /** Returns the Android/default preference store belonging to the active account. */
     public static SharedPreferences profilePreferences(Context context) {
         Context app = context.getApplicationContext();
-        SharedPreferences core = app.getSharedPreferences(CORE, Context.MODE_PRIVATE);
-        String slot = validSlot(core.getString(ACTIVE, DEFAULT_SLOT));
+        String slot = activeSlot(app, DEFAULT_SLOT);
         SharedPreferences target = app.getSharedPreferences(profilePreferencesName(slot), Context.MODE_PRIVATE);
         migrateLegacyDefaultPreferences(app, target);
         if (!slot.equals(target.getString(SLOT_MARKER, null))) {
@@ -99,10 +468,8 @@ public final class MorpheIsolation {
     public static boolean switchAccountRuntime(Context context, String outgoingSlot,
                                                String destinationSlot) {
         List<String> failures = new ArrayList<String>();
-        long started = SystemClock.elapsedRealtime();
         if (!stopRuntimeServices(context)) failures.add("Stremio runtime service");
         if (!terminateOtherProcesses(context)) failures.add("stale Stremio process");
-        long stopped = SystemClock.elapsedRealtime();
         if (failures.isEmpty() && !preserveLegacyServerSettings(context, outgoingSlot)) {
             failures.add("legacy streaming-server settings");
         }
@@ -111,19 +478,14 @@ public final class MorpheIsolation {
             cancelScheduledJobs(context, failures);
             clearTvRows(context, failures);
         }
-        long cleared = SystemClock.elapsedRealtime();
         if (failures.isEmpty() && !rotateStorage(context, outgoingSlot, destinationSlot)) {
             failures.add("account storage rotation");
         }
-        long rotated = SystemClock.elapsedRealtime();
         // Job/service cancellation can race with a system-triggered process start.
         // Recheck immediately before the caller is allowed to commit a new slot.
         if (failures.isEmpty() && !terminateOtherProcesses(context)) {
             failures.add("respawned Stremio process");
         }
-        Log.i(TAG, "Switch timing stop=" + (stopped - started) + "ms, system="
-                + (cleared - stopped) + "ms, storage=" + (rotated - cleared)
-                + "ms, total=" + (SystemClock.elapsedRealtime() - started) + "ms");
         setResult(failures);
         return failures.isEmpty();
     }
@@ -162,8 +524,7 @@ public final class MorpheIsolation {
         if (!stopRuntimeServices(context)) failures.add("Stremio runtime service");
         if (!terminateOtherProcesses(context)) failures.add("stale Stremio process");
         if (failures.isEmpty()) {
-            SharedPreferences core = context.getSharedPreferences(CORE, Context.MODE_PRIVATE);
-            preserveLegacyServerSettings(context, validSlot(core.getString(ACTIVE, DEFAULT_SLOT)));
+            preserveLegacyServerSettings(context, activeSlot(context, DEFAULT_SLOT));
             clearBoundaryData(context, failures);
         }
         if (failures.isEmpty() && !terminateOtherProcesses(context)) failures.add("respawned Stremio process");
@@ -197,8 +558,7 @@ public final class MorpheIsolation {
     public static boolean migrateLegacyBoundaryData(Context context) {
         profilePreferences(context);
         List<String> failures = new ArrayList<String>();
-        SharedPreferences core = context.getSharedPreferences(CORE, Context.MODE_PRIVATE);
-        String activeSlot = validSlot(core.getString(ACTIVE, DEFAULT_SLOT));
+        String activeSlot = activeSlot(context, DEFAULT_SLOT);
         if (!stopRuntimeServices(context)) failures.add("Stremio runtime service");
         if (!terminateOtherProcesses(context)) failures.add("stale Stremio process");
         if (failures.isEmpty() && !preserveLegacyServerSettings(context, activeSlot)) {
@@ -221,13 +581,11 @@ public final class MorpheIsolation {
     public static boolean resetActiveAccount(Context context, SharedPreferences core,
                                              SharedPreferences accountPreferences) {
         List<String> failures = new ArrayList<String>();
-        String slot = validSlot(core.getString(ACTIVE, DEFAULT_SLOT));
-        String prefix = "morphe." + slot + ".";
-        SharedPreferences.Editor editor = core.edit();
-        for (String key : core.getAll().keySet()) {
-            if (key.startsWith(prefix)) editor.remove(key);
+        String slot = activeSlot(context, DEFAULT_SLOT);
+        if (!core.edit().clear().commit()) failures.add("active core file");
+        if (failures.isEmpty() && !removeLegacyCoreNamespace(context, slot)) {
+            failures.add("legacy active core namespace");
         }
-        if (!editor.commit()) failures.add("active core namespace");
         if (!accountPreferences.edit().clear().commit()) failures.add("active Android preferences");
         cancelNotifications(context, failures);
         clearTvRows(context, failures);
@@ -261,6 +619,64 @@ public final class MorpheIsolation {
         }
     }
 
+    /** Copies old prefixed keys once, leaving the source intact for downgrade rollback. */
+    private static boolean migrateLegacyCoreNamespace(Context context, String slot,
+                                                      SharedPreferences target) {
+        String safeSlot = validSlot(slot);
+        SharedPreferences metadata = freshProfileMetadata(context);
+        if (metadata.getBoolean(CORE_MIGRATED + safeSlot, false)) return true;
+
+        SharedPreferences legacy = freshLegacyCorePreferences(context);
+        String prefix = "morphe." + safeSlot + ".";
+        Map<String, ?> existing = target.getAll();
+        SharedPreferences.Editor editor = target.edit();
+        Map<String, Object> copied = new HashMap<String, Object>();
+        for (Map.Entry<String, ?> entry : legacy.getAll().entrySet()) {
+            if (!entry.getKey().startsWith(prefix)) continue;
+            String key = entry.getKey().substring(prefix.length());
+            if (!existing.containsKey(key)) {
+                copied.put(key, entry.getValue());
+                putPreference(editor, key, entry.getValue());
+            }
+        }
+        if (!editor.commit()) {
+            lastError = "account core migration";
+            return false;
+        }
+
+        Map<String, ?> verified = target.getAll();
+        for (Map.Entry<String, Object> entry : copied.entrySet()) {
+            if (!preferenceValuesEqual(entry.getValue(), verified.get(entry.getKey()))) {
+                lastError = "account core migration verification";
+                return false;
+            }
+        }
+        if (!metadata.edit().putBoolean(CORE_MIGRATED + safeSlot, true).commit()) {
+            lastError = "account core migration marker";
+            return false;
+        }
+        lastError = "";
+        return true;
+    }
+
+    private static boolean removeLegacyCoreNamespace(Context context, String slot) {
+        SharedPreferences legacy = freshLegacyCorePreferences(context);
+        String prefix = "morphe." + validSlot(slot) + ".";
+        SharedPreferences.Editor editor = legacy.edit();
+        for (String key : legacy.getAll().keySet()) {
+            if (key.startsWith(prefix)) editor.remove(key);
+        }
+        if (!editor.commit()) return false;
+        for (String key : freshLegacyCorePreferences(context).getAll().keySet()) {
+            if (key.startsWith(prefix)) return false;
+        }
+        return true;
+    }
+
+    private static boolean preferenceValuesEqual(Object expected, Object actual) {
+        return expected == null ? actual == null : expected.equals(actual);
+    }
+
     @SuppressWarnings("unchecked")
     private static void putPreference(SharedPreferences.Editor editor, String key, Object value) {
         if (value instanceof String) editor.putString(key, (String) value);
@@ -269,6 +685,14 @@ public final class MorpheIsolation {
         else if (value instanceof Long) editor.putLong(key, (Long) value);
         else if (value instanceof Float) editor.putFloat(key, (Float) value);
         else if (value instanceof Set) editor.putStringSet(key, new HashSet<String>((Set<String>) value));
+    }
+
+    private static boolean replacePreferences(SharedPreferences preferences, Map<String, ?> values) {
+        SharedPreferences.Editor editor = preferences.edit().clear();
+        for (Map.Entry<String, ?> entry : values.entrySet()) {
+            putPreference(editor, entry.getKey(), entry.getValue());
+        }
+        return editor.commit();
     }
 
     private static boolean terminateOtherProcesses(Context context) {
@@ -312,7 +736,9 @@ public final class MorpheIsolation {
             String name = file.getName();
             if (name.endsWith(".xml.bak")) name = name.substring(0, name.length() - 8);
             else if (name.endsWith(".xml")) name = name.substring(0, name.length() - 4);
-            return !CORE.equals(name) && !META.equals(name) && !name.startsWith(PROFILE_PREFS_PREFIX);
+            return !CORE.equals(name) && !META.equals(name)
+                    && !name.startsWith(CORE_PREFS_PREFIX)
+                    && !name.startsWith(PROFILE_PREFS_PREFIX);
         }
     };
 
@@ -688,8 +1114,7 @@ public final class MorpheIsolation {
     }
 
     private static boolean snapshotCurrentServerSettings(Context context) {
-        SharedPreferences core = context.getSharedPreferences(CORE, Context.MODE_PRIVATE);
-        String slot = validSlot(core.getString(ACTIVE, DEFAULT_SLOT));
+        String slot = activeSlot(context, DEFAULT_SLOT);
         File live = new File(new File(context.getFilesDir(), "stremio-server"), SERVER_SETTINGS_FILE);
         if (!live.isFile()) return true;
         return copyAtomically(live, accountServerSettings(context, slot));
@@ -758,8 +1183,12 @@ public final class MorpheIsolation {
     }
 
     private static String validSlot(String slot) {
-        if (slot != null && slot.matches("[a-z0-9_]{1,32}")) return slot;
+        if (isValidSlot(slot)) return slot;
         return DEFAULT_SLOT;
+    }
+
+    private static boolean isValidSlot(String slot) {
+        return slot != null && slot.matches("[a-z0-9_]{1,32}");
     }
 
     private static void setResult(List<String> failures) {

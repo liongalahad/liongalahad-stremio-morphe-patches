@@ -43,6 +43,7 @@ import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 
 public final class ProfileChooserActivity extends Activity implements View.OnClickListener {
+    public static final String EXTRA_CANCEL_PENDING_ACCOUNT = "morphe.cancel_pending_account";
     private interface PinCallback { void accept(String pin); }
 
     private static final class CenteredGlyphButton extends Button {
@@ -119,12 +120,11 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
     }
 
     private static final String TAG = "MorpheAccounts";
-    private static final String CORE = "core";
     private static final String META = "morphe_profiles";
-    private static final String ACTIVE = "morphe.active_slot";
     private static final String IDS = "profile_ids";
     private static final String NEXT = "next_profile";
     private static final String NAME = "name.";
+    private static final String MANUAL_NAME = "manual_name.";
     private static final String COLOR = "color.";
     private static final String PIN_SALT = "pin_salt.";
     private static final String PIN_HASH = "pin_hash.";
@@ -150,7 +150,6 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
     private final List<Button> avatars = new ArrayList<Button>();
     private final List<TextView> names = new ArrayList<TextView>();
     private final List<TextView> badges = new ArrayList<TextView>();
-    private SharedPreferences corePrefs;
     private SharedPreferences profilePrefs;
     private String activeSlot;
     private String selectedSlot;
@@ -173,18 +172,35 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         appRegular = appTypeface("plusjakartasans_regular", Typeface.DEFAULT);
         appSemibold = appTypeface("plusjakartasans_semibold", Typeface.DEFAULT_BOLD);
 
-        corePrefs = getSharedPreferences(CORE, Context.MODE_PRIVATE);
-        profilePrefs = getSharedPreferences(META, Context.MODE_PRIVATE);
-        initializeProfiles();
-        activeSlot = corePrefs.getString(ACTIVE, profileIds.get(0));
-        if (!profileIds.contains(activeSlot)) {
-            activeSlot = profileIds.get(0);
-            corePrefs.edit().putString(ACTIVE, activeSlot).commit();
+        profilePrefs = MorpheIsolation.freshProfileMetadata(this);
+        String startupIsolationError = null;
+        boolean cancelPending = getIntent().getBooleanExtra(EXTRA_CANCEL_PENDING_ACCOUNT, false);
+        if (!MorpheIsolation.reconcilePendingAccount(this, cancelPending)) {
+            startupIsolationError = "Could not remove the incomplete account: "
+                    + MorpheIsolation.getLastError();
         }
+        profilePrefs = MorpheIsolation.freshProfileMetadata(this);
+        initializeProfiles();
+        if (profileIds.isEmpty()) {
+            activeSlot = null;
+        } else {
+            activeSlot = MorpheIsolation.activeSlot(this, profileIds.get(0));
+            if (!profileIds.contains(activeSlot)) {
+                String previousSlot = activeSlot;
+                activeSlot = profileIds.get(0);
+                if (!MorpheIsolation.commitActiveSlot(this, previousSlot, activeSlot)) {
+                    Log.e(TAG, "Could not repair active account: " + MorpheIsolation.getLastError());
+                }
+            }
+        }
+        syncAutomaticProfileNames();
         selectedSlot = activeSlot;
 
-        String startupIsolationError = null;
-        if (profilePrefs.getInt(ISOLATION_VERSION, 0) < CURRENT_ISOLATION_VERSION) {
+        if (profileIds.isEmpty()) {
+            if (!profilePrefs.edit().putInt(ISOLATION_VERSION, CURRENT_ISOLATION_VERSION).commit()) {
+                startupIsolationError = "Could not initialize account storage";
+            }
+        } else if (profilePrefs.getInt(ISOLATION_VERSION, 0) < CURRENT_ISOLATION_VERSION) {
             if (!MorpheIsolation.migrateLegacyBoundaryData(this)) {
                 startupIsolationError = "Isolation cleanup failed: " + MorpheIsolation.getLastError();
             } else if (!profilePrefs.edit().putInt(ISOLATION_VERSION, CURRENT_ISOLATION_VERSION).commit()) {
@@ -220,7 +236,9 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         scroll.addView(profileRow, new HorizontalScrollView.LayoutParams(-2, -2));
         root.addView(scroll, new LinearLayout.LayoutParams(-1, dp(184)));
 
-        hint = text("Hold OK on an account for options", 15, Color.rgb(183, 181, 194));
+        String defaultHint = profileIds.isEmpty() ? "Select Add account to sign in with a QR code"
+                : "Hold OK on an account for options";
+        hint = text(defaultHint, 15, Color.rgb(183, 181, 194));
         if (startupIsolationError != null) hint.setText(startupIsolationError);
         hint.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(-2, -2);
@@ -248,6 +266,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
     }
 
     private void initializeProfiles() {
+        profileIds.clear();
         String stored = profilePrefs.getString(IDS, "");
         if (stored != null && !stored.isEmpty()) {
             for (String id : stored.split("\\|")) {
@@ -256,21 +275,20 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
                 }
             }
         }
-        if (profileIds.isEmpty()) {
-            profileIds.add(ACCOUNT_A);
-            profileIds.add(ACCOUNT_B);
-            profilePrefs.edit()
-                    .putString(NAME + ACCOUNT_A, "Account A")
-                    .putString(NAME + ACCOUNT_B, "Account B")
-                    .putInt(NEXT, 3)
-                    .putString(IDS, joinIds())
-                    .commit();
-        }
         SharedPreferences.Editor editor = profilePrefs.edit();
+        if (!profilePrefs.contains(NEXT)) editor.putInt(NEXT, 1);
         for (int i = 0; i < profileIds.size(); i++) {
             String id = profileIds.get(i);
             if (!profilePrefs.contains(NAME + id)) {
                 editor.putString(NAME + id, "Profile " + (i + 1));
+            }
+            if (!profilePrefs.contains(MANUAL_NAME + id)) {
+                String fallback = ACCOUNT_A.equals(id) ? "Account A"
+                        : ACCOUNT_B.equals(id) ? "Account B" : "Profile " + (i + 1);
+                String storedName = profilePrefs.getString(NAME + id, fallback);
+                if (storedName != null && !fallback.equals(storedName.trim())) {
+                    editor.putBoolean(MANUAL_NAME + id, true);
+                }
             }
             if (!profilePrefs.contains(COLOR + id)) {
                 editor.putInt(COLOR + id, PALETTE[i % PALETTE.length]);
@@ -390,7 +408,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
             avatars.get(i).setText(initial(name));
             avatars.get(i).setBackground(avatarBackground(profileColor(slot)));
             avatars.get(i).setContentDescription(name + (hasPin(slot) ? ", PIN protected" : ""));
-            names.get(i).setText(name);
+            MorpheTextFit.apply(names.get(i), name, 17f, dp(148));
             badges.get(i).setText(active ? "● Active" : hasPin(slot) ? "PIN" : "");
         }
         if (addButton != null) {
@@ -402,6 +420,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         int index = profileIds.indexOf(selectedSlot);
         if (index < 0) index = 0;
         if (index < avatars.size()) avatars.get(index).requestFocus();
+        else if (addButton != null) addButton.requestFocus();
     }
 
     private void restoreChooserFocus() {
@@ -416,6 +435,12 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         String fallback = ACCOUNT_A.equals(slot) ? "Account A" : ACCOUNT_B.equals(slot) ? "Account B" : "Profile";
         String value = profilePrefs.getString(NAME + slot, fallback);
         return value == null || value.trim().isEmpty() ? fallback : value.trim();
+    }
+
+    private void syncAutomaticProfileNames() {
+        for (String slot : profileIds) {
+            MorpheIsolation.synchronizedProfileName(this, slot);
+        }
     }
 
     private String initial(String value) {
@@ -572,15 +597,16 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         final EditText input = new BackDismissEditText(this);
         input.setSingleLine(true);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(10)});
+        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
         input.setText(profileName(slot));
         input.setSelectAllOnFocus(true);
         input.setTypeface(appRegular);
         showValidatedTextDialog("Rename account", input, new PinCallback() {
             @Override public void accept(String value) {
                 String name = value.trim();
-                if (name.isEmpty() || name.length() > 10) return;
-                profilePrefs.edit().putString(NAME + slot, name).apply();
+                if (name.isEmpty() || name.length() > 12) return;
+                profilePrefs.edit().putString(NAME + slot, name)
+                        .putBoolean(MANUAL_NAME + slot, true).apply();
                 selectedSlot = slot;
                 rebuildProfiles();
                 requestSelectedFocus();
@@ -835,7 +861,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
                     @Override public void run() {
                         String value = input.getText().toString().trim();
                         if (value.isEmpty()) { input.setError("Enter an account name"); return; }
-                        if (value.length() > 10) { input.setError("Use 10 characters or fewer"); return; }
+                        if (value.length() > 12) { input.setError("Use 12 characters or fewer"); return; }
                         submitted[0] = true;
                         hideKeyboard(input);
                         dialog.dismiss();
@@ -936,9 +962,11 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
 
     private void addProfile() {
         if (profileIds.size() >= MAX_PROFILES) return;
-        int next = Math.max(3, profilePrefs.getInt(NEXT, 3));
+        int previousNext = Math.max(1, profilePrefs.getInt(NEXT, 1));
+        int next = previousNext;
         String id;
         do { id = "profile_" + next++; } while (profileIds.contains(id));
+        boolean firstProfile = profileIds.isEmpty();
         profileIds.add(id);
         String name = "Profile " + profileIds.size();
         int color = PALETTE[(profileIds.size() - 1) % PALETTE.length];
@@ -948,8 +976,34 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
             showMessage("Profile could not be created", "Try again.");
             return;
         }
+        if (!MorpheIsolation.beginPendingAccount(this, id, activeSlot, previousNext)) {
+            profileIds.remove(id);
+            profilePrefs.edit().putString(IDS, joinIds()).remove(NAME + id).remove(COLOR + id)
+                    .putInt(NEXT, previousNext).commit();
+            showMessage("Account could not be created", "Try again.");
+            return;
+        }
+        if (firstProfile && !MorpheIsolation.initializeActiveSlot(this, id)) {
+            MorpheIsolation.reconcilePendingAccount(this, true);
+            profilePrefs = MorpheIsolation.freshProfileMetadata(this);
+            initializeProfiles();
+            showMessage("Profile could not be activated", "Try again.");
+            return;
+        }
+        if (firstProfile) activeSlot = id;
         selectedSlot = id;
-        openSlot(id);
+        if (!openSlot(id)) {
+            if (!MorpheIsolation.reconcilePendingAccount(this, true)) {
+                hint.setText("Could not remove the incomplete account: " + MorpheIsolation.getLastError());
+            }
+            profilePrefs = MorpheIsolation.freshProfileMetadata(this);
+            initializeProfiles();
+            activeSlot = profileIds.isEmpty() ? null
+                    : MorpheIsolation.activeSlot(this, profileIds.get(0));
+            selectedSlot = activeSlot;
+            rebuildProfiles();
+            requestSelectedFocus();
+        }
     }
 
     private void removeDialog(final String slot) {
@@ -992,18 +1046,11 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
             return;
         }
 
-        SharedPreferences.Editor coreEditor = corePrefs.edit();
-        String prefix = "morphe." + slot + ".";
-        for (String key : corePrefs.getAll().keySet()) {
-            if (key.startsWith(prefix)) coreEditor.remove(key);
-        }
-        if (removingActive) coreEditor.putString(ACTIVE, fallback);
-        if (!coreEditor.commit()) {
+        if (!MorpheIsolation.deleteCoreProfile(this, slot, removingActive ? fallback : null)) {
             hint.setText("Could not remove this account's core data");
             setControlsEnabled(true);
             return;
         }
-
         if (removingActive) activeSlot = fallback;
         SharedPreferences.Editor metadataEditor = profilePrefs.edit().putString(IDS, joinIds(remaining));
         for (String key : profilePrefs.getAll().keySet()) {
@@ -1061,8 +1108,8 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         exitButton.setClickable(enabled);
     }
 
-    private void openSlot(final String slot) {
-        if (!isValidSlot(slot) || !profileIds.contains(slot)) return;
+    private boolean openSlot(final String slot) {
+        if (!isValidSlot(slot) || !profileIds.contains(slot)) return false;
 
         if (slot.equals(activeSlot)) {
             Intent current = new Intent();
@@ -1070,7 +1117,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
             current.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             startActivity(current);
             finish();
-            return;
+            return true;
         }
 
         setControlsEnabled(false);
@@ -1079,17 +1126,18 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         if (!MorpheIsolation.switchAccountRuntime(this, previousSlot, slot)) {
             hint.setText("Could not isolate account switch: " + MorpheIsolation.getLastError());
             setControlsEnabled(true);
-            return;
+            return false;
         }
-        if (!corePrefs.edit().putString(ACTIVE, slot).commit()) {
+        if (!MorpheIsolation.commitActiveSlot(this, previousSlot, slot)) {
             boolean rolledBack = MorpheIsolation.rollbackAccountSwitch(this, previousSlot, slot);
-            hint.setText(rolledBack ? "Could not activate this account"
+            hint.setText(rolledBack ? "Could not activate this account: " + MorpheIsolation.getLastError()
                     : "Could not activate this account or restore its storage boundary");
             setControlsEnabled(true);
-            return;
+            return false;
         }
         activeSlot = slot;
         launchFreshMain();
+        return true;
     }
 
     private void launchFreshMain() {

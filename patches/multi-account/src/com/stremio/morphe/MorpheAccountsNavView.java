@@ -16,21 +16,38 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public final class MorpheAccountsNavView extends LinearLayout {
     public static final int VIEW_ID = 0x4d4f52a0;
-    private static final String CORE = "core";
     private static final String META = "morphe_profiles";
-    private static final String ACTIVE = "morphe.active_slot";
     private static final String NAME = "name.";
     private static final String COLOR = "color.";
     private final TextView avatar;
     private final TextView label;
     private View backdrop;
+    private View observedRoot;
     private boolean nativeMenuExpanded;
-
+    private boolean destinationVisible;
+    private boolean automaticNamePending;
+    private final ViewTreeObserver.OnGlobalFocusChangeListener globalFocusListener =
+            new ViewTreeObserver.OnGlobalFocusChangeListener() {
+        @Override public void onGlobalFocusChanged(View oldFocus, View newFocus) {
+            updateAccountFocusability(newFocus);
+        }
+    };
+    private final Runnable synchronizeAccountFocusability = new Runnable() {
+        @Override public void run() {
+            updateAccountFocusability(getRootView().findFocus());
+        }
+    };
+    private final Runnable profileNameRefresh = new Runnable() {
+        @Override public void run() {
+            updateProfile();
+        }
+    };
     public MorpheAccountsNavView(Context context, AttributeSet attrs) {
         super(context, attrs);
         setId(VIEW_ID);
@@ -43,10 +60,11 @@ public final class MorpheAccountsNavView extends LinearLayout {
         // this after the inset background so its optical insets cannot replace
         // the content padding.
         setPadding(dp(6), dp(3), dp(8), dp(3));
-        setFocusable(true);
-        setFocusableInTouchMode(true);
+        setFocusable(false);
+        setFocusableInTouchMode(false);
         setClickable(true);
         setContentDescription("Switch account");
+        setVisibility(GONE);
 
         Typeface semibold = appTypeface("plusjakartasans_semibold", Typeface.DEFAULT_BOLD);
         // The native menu requests weight 600 from a family whose next matching
@@ -85,7 +103,6 @@ public final class MorpheAccountsNavView extends LinearLayout {
                 getContext().startActivity(intent);
             }
         });
-        updateProfile();
     }
 
     @Override
@@ -96,16 +113,15 @@ public final class MorpheAccountsNavView extends LinearLayout {
         updateLabelVisibility();
         setBackdropVisible(gainFocus);
         MorpheNavBridge.setAccountsFocused(gainFocus);
-        if (gainFocus) updateProfile();
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            View root = getRootView();
-            int sideId = getResources().getIdentifier("side_menu_fragment", "id", getContext().getPackageName());
-            View sideMenu = root.findViewById(sideId);
-            if (sideMenu != null && requestFirstFocusable(sideMenu)) return true;
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (requestNativeMenuFocus()) return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            if (requestContentFocus()) return true;
         }
         return super.onKeyDown(keyCode, event);
     }
@@ -114,13 +130,21 @@ public final class MorpheAccountsNavView extends LinearLayout {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         int backdropId = getResources().getIdentifier("morphe_nav_backdrop", "id", getContext().getPackageName());
-        backdrop = getRootView().findViewById(backdropId);
+        observedRoot = getRootView();
+        backdrop = observedRoot.findViewById(backdropId);
+        observedRoot.getViewTreeObserver().addOnGlobalFocusChangeListener(globalFocusListener);
         MorpheNavBridge.registerAccountsView(this);
-        updateProfile();
+        post(synchronizeAccountFocusability);
     }
 
     @Override
     protected void onDetachedFromWindow() {
+        removeCallbacks(profileNameRefresh);
+        removeCallbacks(synchronizeAccountFocusability);
+        if (observedRoot != null && observedRoot.getViewTreeObserver().isAlive()) {
+            observedRoot.getViewTreeObserver().removeOnGlobalFocusChangeListener(globalFocusListener);
+        }
+        observedRoot = null;
         setBackdropVisible(false);
         MorpheNavBridge.setAccountsFocused(false);
         super.onDetachedFromWindow();
@@ -129,7 +153,8 @@ public final class MorpheAccountsNavView extends LinearLayout {
     @Override
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
-        if (hasWindowFocus) {
+        if (hasWindowFocus && destinationVisible) {
+            post(synchronizeAccountFocusability);
             updateProfile();
             if (hasFocus()) {
                 setBackdropVisible(true);
@@ -143,17 +168,81 @@ public final class MorpheAccountsNavView extends LinearLayout {
     }
 
     private boolean requestFirstFocusable(View view) {
+        View focusable = firstFocusable(view);
+        return focusable != null && focusable.requestFocus();
+    }
+
+    private View firstFocusable(View view) {
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) {
-                if (requestFirstFocusable(group.getChildAt(i))) return true;
+                View focusable = firstFocusable(group.getChildAt(i));
+                if (focusable != null) return focusable;
             }
         }
-        return view.isFocusable() && view.requestFocus();
+        return view.isFocusable() ? view : null;
+    }
+
+    private boolean requestNativeMenuFocus() {
+        View root = getRootView();
+        int sideId = getResources().getIdentifier("side_menu_fragment", "id", getContext().getPackageName());
+        View sideMenu = root.findViewById(sideId);
+        return sideMenu != null && requestFirstFocusable(sideMenu);
+    }
+
+    private boolean isDescendantOf(View child, View ancestor) {
+        View current = child;
+        while (current != null) {
+            if (current == ancestor) return true;
+            android.view.ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return false;
+    }
+
+    private void updateAccountFocusability(View focused) {
+        if (focused == this) return;
+        View root = getRootView();
+        int sideId = getResources().getIdentifier("side_menu_fragment", "id", getContext().getPackageName());
+        int contentId = getResources().getIdentifier("nav_host_fragment", "id", getContext().getPackageName());
+        View sideMenu = root.findViewById(sideId);
+        View content = root.findViewById(contentId);
+        if (sideMenu != null && isDescendantOf(focused, sideMenu)) {
+            setFocusable(true);
+            setFocusableInTouchMode(true);
+        } else if (content != null && isDescendantOf(focused, content)) {
+            setFocusable(false);
+            setFocusableInTouchMode(false);
+        }
+    }
+
+    private boolean requestContentFocus() {
+        View root = getRootView();
+        int contentId = getResources().getIdentifier("nav_host_fragment", "id", getContext().getPackageName());
+        View content = root.findViewById(contentId);
+        return content != null && requestFirstFocusable(content);
     }
 
     private void setBackdropVisible(boolean visible) {
-        if (backdrop != null) backdrop.setVisibility(visible ? VISIBLE : GONE);
+        if (backdrop != null) backdrop.setVisibility(visible && destinationVisible ? VISIBLE : GONE);
+    }
+
+    void onDestinationChanged(int destinationId) {
+        int playerId = getResources().getIdentifier("player", "id", getContext().getPackageName());
+        int loginId = getResources().getIdentifier("login", "id", getContext().getPackageName());
+        if (destinationId != loginId) {
+            MorpheIsolation.commitPendingAccountIfAuthenticated(getContext());
+        }
+        destinationVisible = destinationId != playerId && destinationId != loginId
+                && MorpheIsolation.hasProfiles(getContext());
+        setVisibility(destinationVisible ? VISIBLE : GONE);
+        if (!destinationVisible) {
+            removeCallbacks(profileNameRefresh);
+            setBackdropVisible(false);
+            MorpheNavBridge.setAccountsFocused(false);
+            return;
+        }
+        updateProfile();
     }
 
     void setNativeMenuExpanded(boolean expanded) {
@@ -162,22 +251,31 @@ public final class MorpheAccountsNavView extends LinearLayout {
     }
 
     private void updateLabelVisibility() {
-        label.setVisibility(hasFocus() || nativeMenuExpanded ? VISIBLE : INVISIBLE);
+        label.setVisibility(destinationVisible && (hasFocus() || nativeMenuExpanded)
+                ? VISIBLE : INVISIBLE);
     }
 
     private void updateProfile() {
-        SharedPreferences core = getContext().getSharedPreferences(CORE, Context.MODE_PRIVATE);
-        SharedPreferences meta = getContext().getSharedPreferences(META, Context.MODE_PRIVATE);
-        String slot = core.getString(ACTIVE, "account_a");
+        if (!destinationVisible || !MorpheIsolation.hasProfiles(getContext())) return;
+        String slot = MorpheIsolation.activeSlot(getContext(), "account_a");
+        @SuppressWarnings("deprecation")
+        SharedPreferences meta = getContext().getSharedPreferences(META, Context.MODE_MULTI_PROCESS);
+        meta.getAll();
         String fallback = "account_b".equals(slot) ? "Account B" : "Account A";
-        String name = meta.getString(NAME + slot, fallback);
+        String synchronizedName = MorpheIsolation.synchronizedProfileName(getContext(), slot);
+        automaticNamePending = synchronizedName == null;
+        String name = synchronizedName == null ? meta.getString(NAME + slot, fallback) : synchronizedName;
         if (name == null || name.trim().isEmpty()) name = fallback;
         name = name.trim();
         int color = meta.getInt(COLOR + slot, Color.rgb(116, 82, 246));
         avatar.setText(name.substring(0, 1).toUpperCase());
         avatar.setBackground(avatarBackground(color));
-        label.setText(name);
+        MorpheTextFit.apply(label, name, 13f, dp(90));
         setContentDescription("Switch account, current account " + name);
+        removeCallbacks(profileNameRefresh);
+        if (automaticNamePending && destinationVisible && isAttachedToWindow()) {
+            postDelayed(profileNameRefresh, 2000L);
+        }
     }
 
     private StateListDrawable avatarBackground(int color) {

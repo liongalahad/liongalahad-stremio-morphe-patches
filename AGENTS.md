@@ -7,4 +7,6 @@
 - Treat Stremio implementation files as patch targets only. Commit compact diffs and original Morphe source, not reconstructed upstream files.
 - Keep compatibility checksum-gated. A new Stremio version is unsupported until patch application, assembly, install, launch, and relevant device acceptance checks pass.
 - The side-by-side patch must retain the package `com.stremio.morphe`, label `Stremio Morphe`, and unique app-defined permission and provider authorities.
+- Keep every patch fully compartmentalized under `patches/<patch-id>/`. Each patch directory must be self-contained and own its diff, original source, scripts, tools, documentation, and test evidence; do not place patch-specific assets in shared root directories.
+- Register each patch through its module-local `patch.json`. Keep root build scripts generic: they may discover, order, compose, rebuild, sign, and verify modules, but patch-specific build or application logic belongs inside the owning patch directory.
 - Use conventional commits.

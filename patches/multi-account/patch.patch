@@ -7,7 +7,7 @@ index f0bb365..e811812 100644
      <permission android:name="com.stremio.one.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature"/>
      <uses-permission android:name="com.stremio.one.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"/>
 -    <application android:appComponentFactory="androidx.core.app.CoreComponentFactory" android:banner="@mipmap/ic_banner" android:extractNativeLibs="true" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:largeHeap="true" android:name="com.stremio.tv.StremioApplication" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.Stremio.SplashScreen" android:usesCleartextTraffic="true">
-+    <application android:allowBackup="false" android:appComponentFactory="androidx.core.app.CoreComponentFactory" android:banner="@mipmap/ic_banner" android:debuggable="true" android:extractNativeLibs="true" android:fullBackupContent="false" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:largeHeap="true" android:name="com.stremio.tv.StremioApplication" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.Stremio.SplashScreen" android:usesCleartextTraffic="true">
++    <application android:allowBackup="false" android:appComponentFactory="androidx.core.app.CoreComponentFactory" android:banner="@mipmap/ic_banner" android:extractNativeLibs="true" android:fullBackupContent="false" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:largeHeap="true" android:name="com.stremio.tv.StremioApplication" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.Stremio.SplashScreen" android:usesCleartextTraffic="true">
          <provider android:authorities="com.stremio.one.content" android:exported="true" android:name="com.stremio.tv.providers.MediaContentProvider"/>
          <receiver android:exported="true" android:name="androidx.media.session.MediaButtonReceiver">
              <intent-filter>
@@ -48,13 +48,15 @@ index 30101fd..233dbbd 100644
 --- a/res/layout/activity_main.xml
 +++ b/res/layout/activity_main.xml
 @@ -2,5 +2,7 @@
- <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent"
+-<FrameLayout android:layout_width="match_parent" android:layout_height="match_parent"
++<com.stremio.morphe.MorpheRootLayout android:layout_width="match_parent" android:layout_height="match_parent"
    xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
      <androidx.fragment.app.FragmentContainerView android:name="androidx.navigation.fragment.NavHostFragment" android:id="@id/nav_host_fragment" android:focusable="true" android:focusableInTouchMode="true" android:descendantFocusability="afterDescendants" android:layout_width="match_parent" android:layout_height="match_parent" app:defaultNavHost="true" app:navGraph="@navigation/main_navigation" />
 +    <View android:id="@+id/morphe_nav_backdrop" android:layout_width="185dp" android:layout_height="match_parent" android:layout_gravity="start" android:background="#FF09090E" android:focusable="false" android:visibility="gone" />
      <androidx.fragment.app.FragmentContainerView android:name="com.stremio.tv.views.menu.NavigationMenuFragment" android:id="@id/side_menu_fragment" android:layout_width="wrap_content" android:layout_height="wrap_content" />
 +    <com.stremio.morphe.MorpheAccountsNavView android:layout_width="145dp" android:layout_height="48dp" android:layout_gravity="start|top" android:layout_marginStart="20dp" android:layout_marginTop="84dp" />
- </FrameLayout>
+-</FrameLayout>
++</com.stremio.morphe.MorpheRootLayout>
 diff --git a/smali_classes5/com/stremio/tv/CoreErrorKt.smali b/smali_classes5/com/stremio/tv/CoreErrorKt.smali
 index f9d781e..508b65e 100644
 --- a/smali_classes5/com/stremio/tv/CoreErrorKt.smali
@@ -62,7 +64,7 @@ index f9d781e..508b65e 100644
 @@ -1087,27 +1087,7 @@
  .method private static final CoreError$lambda$0$0(Landroid/content/SharedPreferences;Landroid/content/SharedPreferences;Landroid/content/Context;)Lkotlin/Unit;
      .locals 0
- 
+
 -    .line 196
 -    invoke-interface {p0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
 -
@@ -85,114 +87,51 @@ index f9d781e..508b65e 100644
 -    .line 207
 -    invoke-interface {p0}, Landroid/content/SharedPreferences$Editor;->commit()Z
 +    invoke-static {p2, p0, p1}, Lcom/stremio/morphe/MorpheIsolation;->resetActiveAccount(Landroid/content/Context;Landroid/content/SharedPreferences;Landroid/content/SharedPreferences;)Z
- 
+
      .line 41
      invoke-static {p2}, Lcom/stremio/common/extensions/ContextExtKt;->restartApp(Landroid/content/Context;)V
 diff --git a/smali_classes6/com/stremio/common/platform/KoinKt.smali b/smali_classes6/com/stremio/common/platform/KoinKt.smali
-index 1d4fab4..25babcf 100644
+index 1d4fab4..ded38be 100644
 --- a/smali_classes6/com/stremio/common/platform/KoinKt.smali
 +++ b/smali_classes6/com/stremio/common/platform/KoinKt.smali
-@@ -422,11 +422,11 @@
+@@ -380,15 +380,11 @@
+
+     move-result-object p0
+
+-    const-string p1, "core"
+-
+-    const/4 v0, 0x0
+-
+-    invoke-virtual {p0, p1, v0}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
++    invoke-static {p0}, Lcom/stremio/morphe/MorpheIsolation;->corePreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+
+     move-result-object p0
+
+-    const-string p1, "getSharedPreferences(...)"
++    const-string p1, "MorpheIsolation.corePreferences(...)"
+
+     invoke-static {p0, p1}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V
+
+@@ -422,11 +418,11 @@
      check-cast p0, Landroid/content/Context;
- 
+
      .line 18
 -    invoke-static {p0}, Landroidx/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
 +    invoke-static {p0}, Lcom/stremio/morphe/MorpheIsolation;->profilePreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
- 
+
      move-result-object p0
- 
+
 -    const-string p1, "getDefaultSharedPreferences(...)"
 +    const-string p1, "MorpheIsolation.profilePreferences(...)"
- 
+
      invoke-static {p0, p1}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V
- 
-diff --git a/smali_classes6/com/stremio/common/storage/CoreStorage.smali b/smali_classes6/com/stremio/common/storage/CoreStorage.smali
-index 2516b2f..84ac778 100644
---- a/smali_classes6/com/stremio/common/storage/CoreStorage.smali
-+++ b/smali_classes6/com/stremio/common/storage/CoreStorage.smali
-@@ -71,6 +71,54 @@
-     return-void
- .end method
- 
-+.method private final namespacedKey(Ljava/lang/String;)Ljava/lang/String;
-+    .locals 3
-+
-+    iget-object v0, p0, Lcom/stremio/common/storage/CoreStorage;->sharedPreferences:Landroid/content/SharedPreferences;
-+
-+    const-string v1, "morphe.active_slot"
-+
-+    const-string v2, "account_a"
-+
-+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-+
-+    move-result-object v0
-+
-+    new-instance v1, Ljava/lang/StringBuilder;
-+
-+    invoke-direct {v1}, Ljava/lang/StringBuilder;-><init>()V
-+
-+    const-string v2, "morphe."
-+
-+    invoke-virtual {v1, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-+
-+    move-result-object v1
-+
-+    invoke-virtual {v1, v0}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-+
-+    move-result-object v0
-+
-+    const-string v1, "."
-+
-+    invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-+
-+    move-result-object v0
-+
-+    invoke-virtual {v0, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-+
-+    move-result-object p1
-+
-+    invoke-virtual {p1}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-+
-+    move-result-object p1
-+
-+    const-string v0, "MorpheAccounts"
-+
-+    invoke-static {v0, p1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
-+
-+    return-object p1
-+.end method
-+
- 
- # virtual methods
- .method public get(Ljava/lang/String;)Lcom/stremio/core/Storage$Result;
-@@ -90,6 +138,10 @@
- 
-     invoke-static {p1, v0}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullParameter(Ljava/lang/Object;Ljava/lang/String;)V
- 
-+    invoke-direct {p0, p1}, Lcom/stremio/common/storage/CoreStorage;->namespacedKey(Ljava/lang/String;)Ljava/lang/String;
-+
-+    move-result-object p1
-+
-     .line 9
-     new-instance v0, Lcom/stremio/core/Storage$Result$Ok;
- 
-@@ -126,6 +178,10 @@
- 
-     invoke-static {p1, v0}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullParameter(Ljava/lang/Object;Ljava/lang/String;)V
- 
-+    invoke-direct {p0, p1}, Lcom/stremio/common/storage/CoreStorage;->namespacedKey(Ljava/lang/String;)Ljava/lang/String;
-+
-+    move-result-object p1
-+
-     if-nez p2, :cond_0
- 
-     .line 14
+
 diff --git a/smali_classes6/com/stremio/morphe/AccountSlotReceiver.smali b/smali_classes6/com/stremio/morphe/AccountSlotReceiver.smali
 new file mode 100644
-index 0000000..479ae91
+index 0000000..951952f
 --- /dev/null
 +++ b/smali_classes6/com/stremio/morphe/AccountSlotReceiver.smali
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,71 @@
 +.class public final Lcom/stremio/morphe/AccountSlotReceiver;
 +.super Landroid/content/BroadcastReceiver;
 +.source "AccountSlotReceiver.java"
@@ -228,19 +167,9 @@ index 0000000..479ae91
 +
 +    if-eqz v0, :check_set
 +
-+    const-string p2, "core"
-+
-+    const/4 v0, 0x0
-+
-+    invoke-virtual {p1, p2, v0}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
-+
-+    move-result-object p1
-+
-+    const-string p2, "morphe.active_slot"
-+
 +    const-string v0, "account_a"
 +
-+    invoke-interface {p1, p2, v0}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
++    invoke-static {p1, v0}, Lcom/stremio/morphe/MorpheIsolation;->activeSlot(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;
 +
 +    move-result-object p1
 +
@@ -278,19 +207,28 @@ diff --git a/smali_classes6/com/stremio/tv/views/menu/NavigationMenuKt.smali b/s
 index ecf3956..87b7e3d 100644
 --- a/smali_classes6/com/stremio/tv/views/menu/NavigationMenuKt.smali
 +++ b/smali_classes6/com/stremio/tv/views/menu/NavigationMenuKt.smali
-@@ -2622,6 +2622,8 @@
- 
+@@ -1928,6 +1928,8 @@
+
+     move-result p2
+
++    invoke-static {p2}, Lcom/stremio/morphe/MorpheNavBridge;->onDestinationChanged(I)V
++
+     invoke-static {p2}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
+
+     move-result-object p2
+@@ -2622,6 +2624,8 @@
+
      invoke-static {p0, p1}, Lcom/stremio/tv/views/menu/NavigationMenuKt;->NavigationMenu$lambda$8(Landroidx/compose/runtime/MutableState;Z)V
- 
+
 +    invoke-static {p0, p1}, Lcom/stremio/morphe/MorpheNavBridge;->onMenuFocusChanged(Ljava/lang/Object;Z)V
 +
      sget-object p0, Lkotlin/Unit;->INSTANCE:Lkotlin/Unit;
- 
+
      return-object p0
-@@ -6250,6 +6252,26 @@
- 
+@@ -6250,6 +6254,26 @@
+
      move-result-object v0
- 
+
 +    const/4 v11, 0x0
 +
 +    int-to-float v11, v11
@@ -313,4 +251,4 @@ index ecf3956..87b7e3d 100644
 +
      .line 337
      invoke-static {v0}, Landroidx/compose/foundation/FocusableKt;->focusGroup(Landroidx/compose/ui/Modifier;)Landroidx/compose/ui/Modifier;
- 
+
