@@ -311,6 +311,42 @@ public final class MorpheIsolation {
         return authenticatedName;
     }
 
+    /** Returns the interface locale stored inside one account's isolated Stremio profile. */
+    public static String interfaceLocale(Context context, String slot) {
+        if (!isValidSlot(slot)) return null;
+        String profileJson = freshAccountCorePreferences(context, slot).getString("profile", null);
+        if (profileJson == null || profileJson.trim().isEmpty()) return null;
+        try {
+            return findInterfaceLocale(new JSONObject(profileJson));
+        } catch (Exception error) {
+            Log.w(TAG, "Could not read interface language from Stremio profile metadata");
+            return null;
+        }
+    }
+
+    private static String findInterfaceLocale(Object value) {
+        if (value instanceof JSONObject) {
+            JSONObject object = (JSONObject) value;
+            String[] directKeys = new String[]{"interfaceLanguage", "interface_language"};
+            for (String key : directKeys) {
+                String direct = object.optString(key, "").trim();
+                if (!direct.isEmpty()) return direct;
+            }
+            java.util.Iterator<String> keys = object.keys();
+            while (keys.hasNext()) {
+                String found = findInterfaceLocale(object.opt(keys.next()));
+                if (found != null) return found;
+            }
+        } else if (value instanceof org.json.JSONArray) {
+            org.json.JSONArray array = (org.json.JSONArray) value;
+            for (int i = 0; i < array.length(); i++) {
+                String found = findInterfaceLocale(array.opt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     private static String accountNameFromProfile(String profileJson) {
         if (profileJson == null || profileJson.trim().isEmpty()) return null;
         try {

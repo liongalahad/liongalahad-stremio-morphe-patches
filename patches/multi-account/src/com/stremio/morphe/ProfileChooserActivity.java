@@ -44,6 +44,7 @@ import javax.crypto.spec.PBEKeySpec;
 
 public final class ProfileChooserActivity extends Activity implements View.OnClickListener {
     public static final String EXTRA_CANCEL_PENDING_ACCOUNT = "morphe.cancel_pending_account";
+    private static final String EXTRA_VERIFY_TRANSLATIONS = "morphe.verify_translations";
     private interface PinCallback { void accept(String pin); }
 
     private static final class CenteredGlyphButton extends Button {
@@ -142,10 +143,6 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
             Color.rgb(245, 124, 0), Color.rgb(198, 40, 40),
             Color.rgb(173, 20, 87), Color.rgb(69, 79, 99)
     };
-    private static final String[] COLOR_NAMES = new String[] {
-            "Purple", "Blue", "Teal", "Green", "Amber", "Red", "Pink", "Slate"
-    };
-
     private final List<String> profileIds = new ArrayList<String>();
     private final List<Button> avatars = new ArrayList<Button>();
     private final List<TextView> names = new ArrayList<TextView>();
@@ -159,6 +156,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
     private TextView hint;
     private Typeface appRegular;
     private Typeface appSemibold;
+    private MorpheStrings strings;
     private boolean controlsLocked;
 
     @Override
@@ -193,6 +191,12 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
                 }
             }
         }
+        strings = MorpheStrings.forAccount(this, activeSlot);
+        boolean verifyTranslations = getIntent().getBooleanExtra(EXTRA_VERIFY_TRANSLATIONS, false);
+        Log.i(TAG, "Account picker locale=" + strings.localeTag()
+                + ", supported=" + MorpheStrings.supportedLocaleCount()
+                + (verifyTranslations ? ", catalogueComplete="
+                + MorpheStrings.verifySupportedTranslations() : ""));
         syncAutomaticProfileNames();
         selectedSlot = activeSlot;
 
@@ -207,6 +211,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
                 startupIsolationError = "Could not record the isolation upgrade";
             }
         }
+        if (startupIsolationError != null) startupIsolationError = localizedError(startupIsolationError);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -214,12 +219,12 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         root.setPadding(dp(36), dp(24), dp(36), dp(22));
         root.setBackgroundColor(Color.rgb(12, 11, 18));
 
-        TextView title = text("Choose an account", 30, Color.WHITE);
+        TextView title = text(strings.chooseAccount(), 30, Color.WHITE);
         title.setTypeface(appSemibold);
         title.setGravity(Gravity.CENTER);
         root.addView(title, new LinearLayout.LayoutParams(-2, -2));
 
-        TextView subtitle = text("Each account keeps its own login, library, addons and watch state.", 16,
+        TextView subtitle = text(strings.accountPrivacy(), 16,
                 Color.rgb(183, 181, 194));
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(-2, -2);
@@ -236,8 +241,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         scroll.addView(profileRow, new HorizontalScrollView.LayoutParams(-2, -2));
         root.addView(scroll, new LinearLayout.LayoutParams(-1, dp(184)));
 
-        String defaultHint = profileIds.isEmpty() ? "Select Add account to sign in with a QR code"
-                : "Hold OK on an account for options";
+        String defaultHint = strings.pickerHint(profileIds.isEmpty());
         hint = text(defaultHint, 15, Color.rgb(183, 181, 194));
         if (startupIsolationError != null) hint.setText(startupIsolationError);
         hint.setGravity(Gravity.CENTER);
@@ -248,7 +252,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         exitButton = new Button(this);
         exitButton.setId(EXIT_ID);
         exitButton.setTag("exit");
-        exitButton.setText("Exit Stremio");
+        exitButton.setText(strings.quit());
         exitButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         exitButton.setTextColor(Color.WHITE);
         exitButton.setTypeface(appSemibold);
@@ -357,7 +361,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         addButton = avatarButton(ADD_ID, "add");
         addButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 42);
         ((CenteredGlyphButton) addButton).setGlyph("+");
-        addButton.setContentDescription("Add account");
+        addButton.setContentDescription(strings.addAccount());
         addButton.setEnabled(profileIds.size() < MAX_PROFILES);
         addButton.setNextFocusDownId(EXIT_ID);
         if (!avatars.isEmpty()) {
@@ -365,9 +369,10 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
             addButton.setNextFocusLeftId(PROFILE_ID_BASE + avatars.size() - 1);
         }
         addItem.addView(addButton, new LinearLayout.LayoutParams(dp(106), dp(106)));
-        TextView addLabel = text(profileIds.size() < MAX_PROFILES ? "Add account" : "Limit reached", 17,
+        TextView addLabel = text(strings.addAccount(), 17,
                 profileIds.size() < MAX_PROFILES ? Color.WHITE : Color.rgb(105, 103, 114));
         addLabel.setGravity(Gravity.CENTER);
+        MorpheTextFit.apply(addLabel, strings.addAccount(), 17f, dp(148));
         LinearLayout.LayoutParams addLabelParams = new LinearLayout.LayoutParams(dp(150), dp(35));
         addLabelParams.topMargin = dp(6);
         addItem.addView(addLabel, addLabelParams);
@@ -407,9 +412,9 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
             boolean active = slot.equals(activeSlot);
             avatars.get(i).setText(initial(name));
             avatars.get(i).setBackground(avatarBackground(profileColor(slot)));
-            avatars.get(i).setContentDescription(name + (hasPin(slot) ? ", PIN protected" : ""));
+            avatars.get(i).setContentDescription(name + (hasPin(slot) ? ", " + strings.pinProtected() : ""));
             MorpheTextFit.apply(names.get(i), name, 17f, dp(148));
-            badges.get(i).setText(active ? "● Active" : hasPin(slot) ? "PIN" : "");
+            badges.get(i).setText(active ? "● " + strings.active() : hasPin(slot) ? "PIN" : "");
         }
         if (addButton != null) {
             addButton.setBackground(avatarBackground(Color.rgb(45, 43, 55)));
@@ -561,7 +566,8 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
     private void showProfileOptions(final String slot) {
         final boolean protectedProfile = hasPin(slot);
         String[] options = new String[] {
-                "Rename", "Change color", protectedProfile ? "Remove PIN" : "Add PIN", "Remove Account"
+                strings.rename(), strings.changeColor(),
+                protectedProfile ? strings.removePin() : strings.addPin(), strings.removeAccount()
         };
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(profileName(slot))
@@ -587,7 +593,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
 
     private void authorizeManagement(final String slot, final Runnable action) {
         if (hasPin(slot)) {
-            requestExistingPin(slot, "Enter PIN to manage " + profileName(slot), action);
+            requestExistingPin(slot, strings.manageAccount(profileName(slot)), action);
         } else {
             action.run();
         }
@@ -601,7 +607,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         input.setText(profileName(slot));
         input.setSelectAllOnFocus(true);
         input.setTypeface(appRegular);
-        showValidatedTextDialog("Rename account", input, new PinCallback() {
+        showValidatedTextDialog(strings.renameAccount(), input, new PinCallback() {
             @Override public void accept(String value) {
                 String name = value.trim();
                 if (name.isEmpty() || name.length() > 12) return;
@@ -639,7 +645,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
             dot.setMinHeight(0);
             dot.setFocusable(true);
             dot.setFocusableInTouchMode(true);
-            dot.setContentDescription(COLOR_NAMES[i] + (PALETTE[i] == current ? ", selected" : ""));
+            dot.setContentDescription(strings.changeColor() + " " + (i + 1));
             dot.setBackground(colorSwatchBackground(PALETTE[i], PALETTE[i] == current));
             dot.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View view) {
@@ -664,9 +670,9 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         }
         final int focusIndex = selectedIndex;
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Change color")
+                .setTitle(strings.changeColor())
                 .setView(swatches)
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(strings.cancel(), null)
                 .create();
         holder[0] = dialog;
         dialog.setOnShowListener(new DialogInterface.OnShowListener() {
@@ -691,17 +697,17 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
     }
 
     private void addPin(final String slot) {
-        promptPin("Add PIN", "Enter a four-digit PIN", new PinCallback() {
+        promptPin(strings.addPin(), strings.pinInstructions(), new PinCallback() {
             @Override public void accept(final String firstPin) {
-                promptPin("Confirm PIN", "Enter the same four-digit PIN again", new PinCallback() {
+                promptPin(strings.confirmPin(), strings.pinInstructions(), new PinCallback() {
                     @Override public void accept(String confirmation) {
                         if (!firstPin.equals(confirmation)) {
-                            showMessage("PINs did not match", "The access PIN was not added.");
+                            showMessage(strings.pinMismatchTitle(), strings.pinMismatchMessage());
                             return;
                         }
                         savePin(slot, firstPin);
                         refreshProfiles();
-                        hint.setText("PIN added to " + profileName(slot));
+                        hint.setText(strings.pinAdded(profileName(slot)));
                     }
                 });
             }
@@ -709,18 +715,18 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
     }
 
     private void removePin(final String slot) {
-        requestExistingPin(slot, "Enter the current PIN to remove it", new Runnable() {
+        requestExistingPin(slot, strings.currentPin(), new Runnable() {
             @Override public void run() {
                 profilePrefs.edit().remove(PIN_SALT + slot).remove(PIN_HASH + slot).commit();
                 refreshProfiles();
-                hint.setText("PIN removed from " + profileName(slot));
+                hint.setText(strings.pinRemoved(profileName(slot)));
             }
         });
     }
 
     private void requestAccessAndOpen(final String slot) {
         if (hasPin(slot)) {
-            requestExistingPin(slot, "Enter PIN for " + profileName(slot), new Runnable() {
+            requestExistingPin(slot, strings.enterPin() + " — " + profileName(slot), new Runnable() {
                 @Override public void run() { openSlot(slot); }
             });
         } else {
@@ -748,12 +754,12 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
                         if (submitted[0]) return;
                         String pin = input.getText().toString();
                         if (pin.length() != 4) {
-                            input.setError("Enter four digits");
+                            input.setError(strings.fourDigitsError());
                             return;
                         }
                         if (!verifyPin(slot, pin)) {
                             input.setText("");
-                            input.setError("Incorrect PIN");
+                            input.setError(strings.incorrectPin());
                             return;
                         }
                         submitted[0] = true;
@@ -789,7 +795,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
                         if (submitted[0]) return;
                         String pin = input.getText().toString();
                         if (!pin.matches("\\d{4}")) {
-                            input.setError("PIN must contain exactly four digits");
+                            input.setError(strings.fourDigitsError());
                             return;
                         }
                         submitted[0] = true;
@@ -860,8 +866,8 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
                 focusInput(dialog, input, new Runnable() {
                     @Override public void run() {
                         String value = input.getText().toString().trim();
-                        if (value.isEmpty()) { input.setError("Enter an account name"); return; }
-                        if (value.length() > 12) { input.setError("Use 12 characters or fewer"); return; }
+                        if (value.isEmpty()) { input.setError(strings.nameRequiredError()); return; }
+                        if (value.length() > 12) { input.setError(strings.nameLengthError()); return; }
                         submitted[0] = true;
                         hideKeyboard(input);
                         dialog.dismiss();
@@ -933,7 +939,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
                     .commit();
         } catch (Exception error) {
             Log.e(TAG, "Could not store access PIN", error);
-            showMessage("PIN could not be saved", "Try again.");
+            showMessage(strings.errorTitle(), strings.genericError());
         }
     }
 
@@ -968,33 +974,33 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         do { id = "profile_" + next++; } while (profileIds.contains(id));
         boolean firstProfile = profileIds.isEmpty();
         profileIds.add(id);
-        String name = "Profile " + profileIds.size();
+        String name = strings.profileFallback(profileIds.size());
         int color = PALETTE[(profileIds.size() - 1) % PALETTE.length];
         if (!profilePrefs.edit().putString(IDS, joinIds()).putString(NAME + id, name)
                 .putInt(COLOR + id, color).putInt(NEXT, next).commit()) {
             profileIds.remove(id);
-            showMessage("Profile could not be created", "Try again.");
+            showMessage(strings.errorTitle(), strings.genericError());
             return;
         }
         if (!MorpheIsolation.beginPendingAccount(this, id, activeSlot, previousNext)) {
             profileIds.remove(id);
             profilePrefs.edit().putString(IDS, joinIds()).remove(NAME + id).remove(COLOR + id)
                     .putInt(NEXT, previousNext).commit();
-            showMessage("Account could not be created", "Try again.");
+            showMessage(strings.errorTitle(), strings.genericError());
             return;
         }
         if (firstProfile && !MorpheIsolation.initializeActiveSlot(this, id)) {
             MorpheIsolation.reconcilePendingAccount(this, true);
             profilePrefs = MorpheIsolation.freshProfileMetadata(this);
             initializeProfiles();
-            showMessage("Profile could not be activated", "Try again.");
+            showMessage(strings.errorTitle(), strings.genericError());
             return;
         }
         if (firstProfile) activeSlot = id;
         selectedSlot = id;
         if (!openSlot(id)) {
             if (!MorpheIsolation.reconcilePendingAccount(this, true)) {
-                hint.setText("Could not remove the incomplete account: " + MorpheIsolation.getLastError());
+                hint.setText(localizedError(MorpheIsolation.getLastError()));
             }
             profilePrefs = MorpheIsolation.freshProfileMetadata(this);
             initializeProfiles();
@@ -1008,15 +1014,15 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
 
     private void removeDialog(final String slot) {
         if (profileIds.size() <= 1) {
-            showMessage("Account cannot be removed", "At least one local account must remain.");
+            showMessage(strings.errorTitle(), strings.atLeastOneAccount());
             return;
         }
         final String name = profileName(slot);
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Remove " + name + "?")
-                .setMessage("This removes the account and all of its local data from this installation. It does not delete the Stremio account.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Remove", new DialogInterface.OnClickListener() {
+                .setTitle(strings.removeTitle(name))
+                .setMessage(strings.removeExplanation())
+                .setNegativeButton(strings.cancel(), null)
+                .setPositiveButton(strings.remove(), new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface dialog, int which) { removeProfile(slot, name); }
                 })
                 .create();
@@ -1032,22 +1038,22 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
 
         if (removingActive) {
             setControlsEnabled(false);
-            hint.setText("Removing " + name + "…");
+            hint.setText(strings.removing(name));
             if (!MorpheIsolation.switchAccountRuntime(this, slot, fallback)) {
-                hint.setText("Could not isolate account removal: " + MorpheIsolation.getLastError());
+                hint.setText(localizedError(MorpheIsolation.getLastError()));
                 setControlsEnabled(true);
                 return;
             }
         }
 
         if (!MorpheIsolation.deleteProfilePreferences(this, slot)) {
-            hint.setText("Could not remove this account's Android preferences");
+            hint.setText(strings.errorTitle());
             setControlsEnabled(true);
             return;
         }
 
         if (!MorpheIsolation.deleteCoreProfile(this, slot, removingActive ? fallback : null)) {
-            hint.setText("Could not remove this account's core data");
+            hint.setText(strings.errorTitle());
             setControlsEnabled(true);
             return;
         }
@@ -1058,7 +1064,7 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         }
         if (!metadataEditor.remove(NAME + slot).remove(COLOR + slot)
                 .remove(PIN_SALT + slot).remove(PIN_HASH + slot).commit()) {
-            hint.setText("Core data was removed, but account-list cleanup must be retried");
+            hint.setText(strings.errorTitle());
             setControlsEnabled(true);
             selectedSlot = activeSlot;
             rebuildProfiles();
@@ -1071,12 +1077,8 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         selectedSlot = activeSlot;
         rebuildProfiles();
         requestSelectedFocus();
-        if (removingActive) {
-            hint.setText(name + " and all local data were removed. Choose an account to continue.");
-            setControlsEnabled(true);
-        } else {
-            hint.setText(name + " and all local data were removed");
-        }
+        hint.setText(strings.removed());
+        if (removingActive) setControlsEnabled(true);
     }
 
     private String joinIds() {
@@ -1121,17 +1123,17 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
         }
 
         setControlsEnabled(false);
-        hint.setText("Opening " + profileName(slot) + "…");
+        hint.setText(strings.opening(profileName(slot)));
         final String previousSlot = activeSlot;
         if (!MorpheIsolation.switchAccountRuntime(this, previousSlot, slot)) {
-            hint.setText("Could not isolate account switch: " + MorpheIsolation.getLastError());
+            hint.setText(localizedError(MorpheIsolation.getLastError()));
             setControlsEnabled(true);
             return false;
         }
         if (!MorpheIsolation.commitActiveSlot(this, previousSlot, slot)) {
             boolean rolledBack = MorpheIsolation.rollbackAccountSwitch(this, previousSlot, slot);
-            hint.setText(rolledBack ? "Could not activate this account: " + MorpheIsolation.getLastError()
-                    : "Could not activate this account or restore its storage boundary");
+            hint.setText(rolledBack ? localizedError(MorpheIsolation.getLastError())
+                    : strings.errorTitle());
             setControlsEnabled(true);
             return false;
         }
@@ -1150,9 +1152,14 @@ public final class ProfileChooserActivity extends Activity implements View.OnCli
 
     private void showMessage(String title, String message) {
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(title).setMessage(message).setPositiveButton("OK", null).create();
+                .setTitle(title).setMessage(message).setPositiveButton(strings.ok(), null).create();
         dialog.show();
         applyDialogTypeface(dialog);
+    }
+
+    private String localizedError(String detail) {
+        return detail == null || detail.trim().isEmpty() ? strings.errorTitle()
+                : strings.errorTitle() + ": " + detail;
     }
 
     private void exitStremio() {

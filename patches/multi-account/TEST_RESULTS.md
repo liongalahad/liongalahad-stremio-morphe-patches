@@ -231,6 +231,23 @@ two-account Android TV emulator.
 
 One Stremio Android TV installation now retains multiple complete authenticated accounts and provides an on-device lifecycle for selecting, adding, renaming, recoloring, PIN-protecting, and removing them. Core state, Android/default preferences, caches, databases, WorkManager/SDK files and native streaming-server storage are retained separately per account. Switching terminates the outgoing runtime, transactionally rotates the destination container into place, then launches the destination. Removing either an inactive or active account deletes all of its logical app-private stores, while selecting the already-active account still returns immediately without a process restart.
 
+## Active-account localization regression
+
+Retested on 2026-08-22 with the Morphe-native x86_64 build on the existing two-account 4K Android TV emulator.
+
+| Check | Result |
+| --- | --- |
+| Active account interface locale is read from its isolated Stremio profile | Pass (`it-IT` for Account A, `en-US` for Account B) |
+| Italian account renders title, privacy copy, Add account, Active, picker hint, and exit action in Italian | Pass |
+| Italian long-press options render Rename, Change color, Add PIN, and Remove account in Italian | Pass |
+| Italian PIN prompt renders localized title/instructions and retains the buttonless four-digit flow | Pass |
+| Switching from Account A to Account B changes the next chooser opening from Italian to English | Pass |
+| Switching from Account B back to Account A restores Italian on the next chooser opening | Pass |
+| Stremio translation catalogue contains every declared selectable locale | Pass (51 of 51) |
+| Required chooser/profile/PIN translation getters return non-empty text for every selectable locale | Pass (runtime catalogue validation) |
+| Existing Account A/B account state survives the in-place update and two language-boundary switches | Pass |
+| Fatal Android runtime exceptions during localization checks | 0 |
+
 ## Morphe Manager bundle regression
 
 Retested on 2026-08-22 with the native `.mpp` bundle applied by Morphe Desktop 1.12.0 to the registered Stremio 1.10.4 x86_64 APK, then installed over the existing API 36 4K TV-emulator build.
