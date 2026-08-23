@@ -1,17 +1,28 @@
 # Stremio Morphe Patches
 
-Morphe patch source for the official Stremio Android TV application. The three current patches target only `com.stremio.one` `1.10.4`.
+Public Morphe patch source for the official Stremio Android TV application. The three current patches target only `com.stremio.one` `1.10.4`.
 
 This repository distributes compact patch code and original Morphe source. It never distributes original, decoded, rebuilt, signed, patched, or otherwise modified Stremio APKs.
 
 > [!WARNING]
-> **These patches are work in progress.** Although the documented emulator checks have passed, real-device and server-write acceptance is incomplete. Patches may disrupt Stremio features, account state, or addon configuration. Use them only if you understand and accept this risk. Report bugs and regressions by [opening a GitHub issue](https://github.com/liongalahad/Stremio-Morphe-Patches/issues/new), but do not attach Stremio APKs, decoded files, signing material, screenshots, or device captures.
+> **These patches are work in progress.** Although the documented emulator checks have passed, real-device and server-write acceptance is incomplete. Patches may disrupt Stremio features, account state, or addon configuration. Use them only if you understand and accept this risk. Report bugs and regressions by [opening a GitHub issue](https://github.com/liongalahad/stremio-androidTV-morphe-patches/issues/new), but do not attach Stremio APKs, decoded files, signing material, screenshots, or device captures.
 
 The suite adds a local multi-account chooser, remote-friendly installed-addon reordering, and a side-by-side application identity. Each patch owns its diff, Morphe source, scripts, tools, documentation, and test evidence inside its own directory. Shared root code is limited to generic discovery, composition, rebuild, signing, and verification infrastructure.
 
-## Morphe Manager workflow
+## Install in Morphe Manager
 
-The repository builds a native Morphe patch bundle (`.mpp`). All three patches are enabled by default and can be imported into Morphe Manager without making this repository public.
+1. Download and install [Morphe Manager](https://morphe.software/) on your phone or TV.
+2. Add `github.com/liongalahad/stremio-androidTV-morphe-patches` as a GitHub patch source. No GitHub PAT is required because the repository is public.
+3. Enable prerelease patches while the bundle remains on `dev`.
+4. Import the official Stremio Android TV 1.10.4 APK for the target ABI. Supported variants are listed in `checksums.json`.
+5. Select the patches to apply. All three are enabled by default. `Side-by-side installation` produces package `com.stremio.morphe` with label `Stremio Morphe`; deselect it only when replacement-install behavior is intended.
+6. Save the patched APK locally, then sideload and install it on your TV. The default side-by-side output installs beside official Stremio. A replacement output cannot upgrade the official app in place because the patched APK has a different signature.
+
+Deep link: `https://morphe.software/add-source?github=liongalahad/stremio-androidTV-morphe-patches`
+
+## Build the bundle locally
+
+The repository builds a native Morphe patch bundle (`.mpp`). All three patches are enabled by default.
 
 Build the bundle locally against checked-out Morphe tooling:
 

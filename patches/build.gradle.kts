@@ -4,10 +4,10 @@ patches {
     about {
         name = "Stremio Morphe Patches"
         description = "Morphe patches for the official Stremio Android TV application"
-        source = "https://github.com/liongalahad/Stremio-Morphe-Patches"
+        source = "https://github.com/liongalahad/stremio-androidTV-morphe-patches"
         author = "liongalahad"
-        contact = "https://github.com/liongalahad/Stremio-Morphe-Patches/issues"
-        website = "https://github.com/liongalahad/Stremio-Morphe-Patches"
+        contact = "https://github.com/liongalahad/stremio-androidTV-morphe-patches/issues"
+        website = "https://github.com/liongalahad/stremio-androidTV-morphe-patches"
         license = "GPLv3"
     }
 }
