@@ -3,7 +3,8 @@ param(
     [string]$JavaHome = 'C:\Program Files\Android\Android Studio\jbr',
     [string]$AndroidSdk = (Join-Path $env:LOCALAPPDATA 'Android\Sdk'),
     [string]$MorpheGradlePluginSource = $env:MORPHE_GRADLE_PLUGIN_SRC,
-    [string]$MorphePatcherSource = $env:MORPHE_PATCHER_SRC
+    [string]$MorphePatcherSource = $env:MORPHE_PATCHER_SRC,
+    [string]$GitHubActor = $env:GITHUB_ACTOR
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,14 +22,6 @@ foreach ($requiredPath in @($java, $AndroidSdk, $gradleWrapper)) {
 $env:JAVA_HOME = $JavaHome
 $env:ANDROID_HOME = $AndroidSdk
 $env:ANDROID_SDK_ROOT = $AndroidSdk
-$env:GITHUB_ACTOR = 'liongalahad'
-
-if ([string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
-    $env:GITHUB_TOKEN = (& gh auth token --user liongalahad)
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
-        throw 'Could not obtain a GitHub token for liongalahad.'
-    }
-}
 
 if (-not [string]::IsNullOrWhiteSpace($MorpheGradlePluginSource)) {
     $env:MORPHE_GRADLE_PLUGIN_SRC = (Resolve-Path -LiteralPath $MorpheGradlePluginSource).Path
@@ -44,6 +37,15 @@ if ($hasLocalPlugin -ne $hasLocalPatcher) {
 }
 if (-not $hasLocalPlugin -and [string]::IsNullOrWhiteSpace($env:MORPHE_PACKAGES_TOKEN)) {
     throw 'Published Morphe dependencies require MORPHE_PACKAGES_TOKEN with read:packages scope, or set both local source paths.'
+}
+if (-not $hasLocalPlugin -and [string]::IsNullOrWhiteSpace($GitHubActor)) {
+    $GitHubActor = (& gh api user --jq .login)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($GitHubActor)) {
+        throw 'Published Morphe dependencies require GITHUB_ACTOR or an authenticated GitHub CLI account.'
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($GitHubActor)) {
+    $env:GITHUB_ACTOR = $GitHubActor
 }
 
 & $gradleWrapper :patches:buildAndroid

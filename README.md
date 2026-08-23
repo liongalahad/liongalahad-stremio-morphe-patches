@@ -1,30 +1,32 @@
 # Stremio Morphe Patches
 
-Public Morphe patch source for the official Stremio Android TV application. The three current patches target only `com.stremio.one` `1.10.4`.
+Public Morphe patch source for the official Stremio Android TV application. The three current source patches target only `com.stremio.one` `1.10.4`.
 
-This repository distributes compact patch code and original Morphe source. It never distributes original, decoded, rebuilt, signed, patched, or otherwise modified Stremio APKs.
+This repository distributes patch code and `.mpp` bundles. It never distributes original, decoded, rebuilt, signed, patched, or otherwise modified Stremio APKs.
 
 > [!WARNING]
-> **These patches are work in progress.** Although the documented emulator checks have passed, real-device and server-write acceptance is incomplete. Patches may disrupt Stremio features, account state, or addon configuration. Use them only if you understand and accept this risk. Report bugs and regressions by [opening a GitHub issue](https://github.com/liongalahad/stremio-androidTV-morphe-patches/issues/new), but do not attach Stremio APKs, decoded files, signing material, screenshots, or device captures.
+> **All patches in this repository are prerelease work in progress.** They are not fully tested and may disrupt Stremio features, account state, or addon configuration. Use them only if you understand and accept this risk. Testers can report bugs, regressions, or other malfunctions by [opening a GitHub issue](https://github.com/liongalahad/stremio-androidTV-morphe-patches/issues/new). Do not attach original, patched, or modified Stremio APKs, decoded files, signing material, screenshots, or device captures to an issue.
 
-The suite adds a local multi-account chooser, remote-friendly installed-addon reordering, and a side-by-side application identity. Each patch owns its diff, Morphe source, scripts, tools, documentation, and test evidence inside its own directory. Shared root code is limited to generic discovery, composition, rebuild, signing, and verification infrastructure.
+The suite adds a default-selected side-by-side identity, a local multi-account chooser, and remote-friendly installed-addon reordering. Each patch owns its runtime logic, fingerprints, transforms, documentation, and test evidence inside its own directory. Shared code is limited to generic infrastructure required by multiple patches.
+
+`Multi-account` provides a D-pad-friendly chooser for up to five isolated local accounts. Each account retains its own login, library, addons, watch state, preferences, caches, databases, and related app-private data. Account names, colors, four-digit PINs, removal, and switching are managed locally on the device.
+
+`Addon reordering` adds hold-OK and D-pad ordering to Stremio's installed-addon list. Changes remain provisional until confirmed, and failed validation or server writes restore the original order. The authenticated server-write acceptance check remains outstanding.
 
 ## Install in Morphe Manager
 
 1. Download and install [Morphe Manager](https://morphe.software/) on your phone or TV.
 2. Add `github.com/liongalahad/stremio-androidTV-morphe-patches` as a GitHub patch source. No GitHub PAT is required because the repository is public.
 3. Enable prerelease patches while the bundle remains on `dev`.
-4. Import the official Stremio Android TV 1.10.4 APK for the target ABI. Supported variants are listed in `checksums.json`.
+4. Import the official Stremio Android TV 1.10.4 APK for the target ABI.
 5. Select the patches to apply. All three are enabled by default. `Side-by-side installation` produces package `com.stremio.morphe` with label `Stremio Morphe`; deselect it only when replacement-install behavior is intended.
 6. Save the patched APK locally, then sideload and install it on your TV. The default side-by-side output installs beside official Stremio. A replacement output cannot upgrade the official app in place because the patched APK has a different signature.
 
 Deep link: `https://morphe.software/add-source?github=liongalahad/stremio-androidTV-morphe-patches`
 
-## Build the bundle locally
+## Local workflow
 
-The repository builds a native Morphe patch bundle (`.mpp`). All three patches are enabled by default.
-
-Build the bundle locally against checked-out Morphe tooling:
+The local build requires Windows PowerShell, a JDK, and the Android SDK. Build the native Morphe patch bundle against checked-out Morphe tooling:
 
 ```powershell
 .\scripts\build-morphe.ps1 `
@@ -32,36 +34,13 @@ Build the bundle locally against checked-out Morphe tooling:
   -MorphePatcherSource "C:\path\to\morphe-patcher"
 ```
 
-The script prints the generated bundle path and SHA-256. Copy that `.mpp` file to the Android TV device, open Morphe Manager's local patch-bundle import, and select it. Choose the official Stremio Android TV 1.10.4 APK when Manager asks for the source application.
+The script prints the generated `.mpp` path and SHA-256. Build output remains under ignored `patches/build/` paths and is never committed.
 
-Manager compatibility requires the official Stremio signing certificate, an APK source file, and the ABI-specific 1.10.4 version code registered in `checksums.json`. The legacy PowerShell workflow below additionally performs an exact whole-APK SHA-256 check before decoding.
-
-The two paths can instead be supplied through `MORPHE_GRADLE_PLUGIN_SRC` and `MORPHE_PATCHER_SRC`. To resolve the published dependencies instead, set `MORPHE_PACKAGES_TOKEN` to a GitHub token with `read:packages` scope. The build script also requires the authenticated `liongalahad` GitHub CLI account because the Morphe Gradle tooling configures GitHub Packages during startup.
-
-## Legacy local workflow
-
-### Requirements
-
-- Windows PowerShell 7
-- Android Studio with Android SDK platform and build-tools 36
-- The JDK bundled with Android Studio
-- Apktool 3.0.3 at `tools/apktool_3.0.3.jar`
-- An Android debug keystore at `%USERPROFILE%\.android\debug.keystore`
-- An official Stremio Android TV 1.10.4 APK whose SHA-256 is registered in `checksums.json`
-
-Build all registered patches directly with Apktool:
-
-```powershell
-.\scripts\build.ps1 -OriginalApk "C:\path\to\the-supported-stremio.apk"
-```
-
-The build rejects unknown APKs before decoding, discovers modules through their local `patch.json` manifests, applies them in declared order, rebuilds the application, aligns and signs the result, and verifies its signature. Generated files remain under ignored `build/` and `artifacts/` paths.
-
-See the [patch module contract](patches/README.md) for the required compartment structure.
+The source paths can instead be supplied through `MORPHE_GRADLE_PLUGIN_SRC` and `MORPHE_PATCHER_SRC`. To resolve published Morphe dependencies, set `MORPHE_PACKAGES_TOKEN` to a GitHub token with `read:packages` scope and either set `GITHUB_ACTOR` to that token's account or authenticate GitHub CLI as that account.
 
 ## Stremio 1.10.4 compatibility
 
-`checksums.json` registers the official `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64` Stremio Android TV 1.10.4 APKs. A new Stremio version remains unsupported until patch application, assembly, installation, launch, and relevant device acceptance checks pass.
+The source definitions cover the official `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64` Stremio Android TV 1.10.4 APKs. Compatibility requires the official Stremio signing certificate and the declared ABI-specific version code. A new Stremio version remains unsupported until patch application, assembly, installation, launch, and relevant device acceptance checks pass.
 
 Current validation includes composed and signed `x86_64` and `arm64-v8a` builds. The `x86_64` build was installed and exercised on an Android TV API 36 emulator. Multi-account, navigation, isolation, and side-by-side launch checks passed within the documented scope. Addon reordering passed its local interaction and rollback checks; the final authenticated server-write boundary remains outstanding. Real Google TV Streamer acceptance also remains manual.
 
@@ -69,6 +48,7 @@ The 2024 Google TV Streamer exposes 32-bit ARM app support, so use Stremio's `ar
 
 ## Available patches
 
+> `dev`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
 <details open>
 <summary>📦 Stremio Android TV&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
@@ -78,22 +58,17 @@ The 2024 Google TV Streamer exposes 32-bit ARM app support, so use Stremio's `ar
 | 1.10.4 |
 | :---: |
 
-| 💊&nbsp;Patch | 📜&nbsp;Description |
-|----------|----------------|
-| [Multi-account](patches/multi-account/README.md) | Adds a D-pad-friendly chooser for up to five isolated local Stremio accounts, with names, colors, PINs, and account-local storage. |
-| [Addon reordering](patches/addon-reordering/README.md) | Adds hold-OK and D-pad ordering to the installed-addon list, with provisional edits, safe rollback, and full-collection preservation. |
-| [Side-by-side installation](patches/side-by-side-installation/README.md) | Installs the patched app separately as Stremio Morphe instead of replacing official Stremio. |
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Side-by-side installation](patches/side-by-side-installation/README.md) | Installs the patched app separately as Stremio Morphe instead of replacing official Stremio. |  |
+| [Multi-account](patches/multi-account/README.md) | Adds an Android TV account chooser with isolated login, library, addons, watch state, names, colors, and PINs. |  |
+| [Addon reordering](patches/addon-reordering/README.md) | Adds remote-friendly hold-OK reordering to Stremio's installed-addon list. |  |
 
 </details>
 
-## Side-by-side identity
+## Branches
 
-The resulting side-by-side build uses:
+- `dev`: ongoing development and prereleases.
+- `main`: patches promoted only after relevant compatibility and device acceptance checks pass.
 
-- Official package: `com.stremio.one`
-- Morphe package: `com.stremio.morphe`
-- Launcher label: `Stremio Morphe`
-
-The identity patch also renames Stremio's app-defined signature permission and every provider authority. Android therefore gives Stremio Morphe separate app data, permissions, account state, and update history. It does not import data from `com.stremio.one`.
-
-Detailed design, limitations, and acceptance evidence live with each patch under `patches/<patch-id>/`.
+License: [GPL-3.0](LICENSE).
