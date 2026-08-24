@@ -1,3 +1,9 @@
+## [1.0.0-dev.2](https://github.com/liongalahad/stremio-androidTV-morphe-patches/compare/v1.0.0-dev.1...v1.0.0-dev.2) (2026-08-24)
+
+### 🐛 Bug Fixes
+
+* publish Android-compatible patch bundles ([390c84b](https://github.com/liongalahad/stremio-androidTV-morphe-patches/commit/390c84b462c36abe5029b871c0716a1244d5aaf9))
+
 ## 1.0.0-dev.1 (2026-08-24)
 
 ### 🐛 Bug Fixes
