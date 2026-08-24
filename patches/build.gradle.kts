@@ -1,3 +1,5 @@
+import java.util.jar.JarFile
+
 group = "io.github.liongalahad.stremio"
 
 patches {
@@ -45,11 +47,25 @@ tasks {
 
     register<JavaExec>("generatePatchesList") {
         description = "Build the Morphe bundle and generate patches-list.json"
-        dependsOn(build)
+        // Morphe Manager loads patches from DEX on Android. The regular JVM
+        // build only creates class files, while buildAndroid adds classes.dex
+        // to the MPP after creating the JAR.
+        dependsOn("buildAndroid")
 
         classpath = sourceSets["main"].runtimeClasspath + patchListGeneratorClasspath
         mainClass.set("util.PatchListGeneratorKt")
         args(project.version.toString())
+
+        doLast {
+            val bundle = project.tasks.getByName("jar").outputs.files.singleFile
+            JarFile(bundle).use { jar ->
+                check(jar.entries().asSequence().any { entry ->
+                    entry.name.endsWith(".dex", ignoreCase = true) && entry.size > 0L
+                }) {
+                    "Android patch bundle is missing a non-empty DEX entry: ${bundle.absolutePath}"
+                }
+            }
+        }
     }
 
     // Used by gradle-semantic-release-plugin.
