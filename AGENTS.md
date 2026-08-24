@@ -1,6 +1,6 @@
 # Repository rules
 
-- Perform every GitHub mutation for this repository as the `liongalahad` GitHub account; never use `gm-hera`.
+- Perform every GitHub mutation for this repository as the `liongalahad` GitHub account; never use another account.
 - Before committing or pushing, verify the repository-local Git identity is `liongalahad <145302945+liongalahad@users.noreply.github.com>` and the active authenticated GitHub CLI account is `liongalahad`.
 - Never commit, release, cache in Actions artifacts, or attach original, decoded, rebuilt, signed, or patched Stremio APK contents.
 - Keep original APKs, decoded trees, build outputs, signing keys, screenshots, and device captures gitignored.

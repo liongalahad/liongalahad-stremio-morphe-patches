@@ -48,6 +48,7 @@ The 2024 Google TV Streamer exposes 32-bit ARM app support, so use Stremio's `ar
 
 ## Available patches
 
+<!-- PATCHES_START EXPANDED -->
 > `dev`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
 <details open>
 <summary>📦 Stremio Android TV&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
@@ -65,6 +66,7 @@ The 2024 Google TV Streamer exposes 32-bit ARM app support, so use Stremio's `ar
 | [Addon reordering](patches/addon-reordering/README.md) | Adds remote-friendly hold-OK reordering to Stremio's installed-addon list. |  |
 
 </details>
+<!-- PATCHES_END -->
 
 ## Branches
 

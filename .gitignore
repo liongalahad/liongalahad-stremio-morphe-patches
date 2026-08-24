@@ -23,5 +23,8 @@
 # Local tooling and IDE state.
 /.idea/
 /.vscode/
+/node_modules/
+**/__pycache__/
+*.pyc
 *.iml
 *.log
